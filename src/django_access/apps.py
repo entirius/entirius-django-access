@@ -9,3 +9,6 @@ class DjangoAccessConfig(AppConfig):
     name = "django_access"
     label = "django_access"
     is_volkanos = True
+
+    def ready(self) -> None:
+        from django_access import checks  # noqa: F401 — registers the catalogue system checks
