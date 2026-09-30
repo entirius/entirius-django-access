@@ -14,7 +14,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "MPL-2.0"
 dependencies = [
-    "Django>=4.2",
+    "Django>=5.1",
     "djangorestframework>=3.14",
     "djangorestframework-simplejwt>=5.3",
     "drf-spectacular>=0.27",
