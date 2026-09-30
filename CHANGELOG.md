@@ -11,6 +11,17 @@
   cached, `reset()` for tests.
 - System checks (tag `entirius_config`, `django_access.E001`–`E006`): duplicate area or scope keys, invalid areas,
   rules naming an unknown area or carrying an invalid regex, unreadable declarations.
+- Models `Role`, `RolePermission`, `Grant` (one user or one `auth.Group`), `AuditEntry`; read-only Django admin.
+- Built-in roles `administrator`, `manager`, `editor`, `viewer`, computed from the catalogue at run time; custom roles
+  hold validated permission keys.
+- `services.permissions`: `effective_permissions(user)`, `has_permission(user, key)`, `granted_roles(user)`,
+  `manages_access(user)`; cached per user under a version bumped by every access change, group membership and
+  `is_staff` / `is_superuser` / `is_active` changes.
+- `services.access_service`: `create_role`, `update_role`, `delete_role`, `grant_role`, `revoke_grant` — each in one
+  transaction with its audit row; a change that removes the last access manager raises `AccessLockout`.
+- Migration `0002`: the built-in roles, and Administrator for every active staff user on first adoption
+  (`grant.migrate` audit rows).
+- Requires Django 5.1+.
 
 ## 0.1.0 (unreleased)
 
