@@ -11,4 +11,9 @@ class DjangoAccessConfig(AppConfig):
     is_volkanos = True
 
     def ready(self) -> None:
-        from django_access import checks  # noqa: F401 — registers the catalogue system checks
+        from django_access import (
+            checks,  # noqa: F401 — registers the catalogue system checks
+            signals,
+        )
+
+        signals.connect()
