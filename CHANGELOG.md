@@ -21,6 +21,14 @@
   transaction with its audit row; a change that removes the last access manager raises `AccessLockout`.
 - Migration `0002`: the built-in roles, and Administrator for every active staff user on first adoption
   (`grant.migrate` audit rows).
+- `services.route_map`: `walk()` yields every route as `ResolverMatch.route`, `classify()` gives owner, admin flag,
+  area and method overrides (no models imported), `required_permission()` the `<area>:<level>` a method needs,
+  `audit_routes()` the per-module route audit (JSON report on request). Admin set = `admin/` segment or `api-admin/`
+  path ∪ an `IsAdminUser`/`IsSuperUser` permission class (DRF `&`/`|` composites walked) ∪ the munin health, returns
+  download and pim viewer exceptions; the Django admin site and the X-API-ADMIN-KEY erase routes are not admin.
+- `catalogue.defaults.METHOD_OVERRIDES`: 10 POST-reads → read, leads GDPR export and 6 GET PII exports/downloads →
+  write, contentdb GET `…/published/` → `content.publish:write`. `returns.attachments` is write-only.
+- `manage.py access_routes [--check] [--json PATH]`.
 - Requires Django 5.1+.
 
 ## 0.1.0 (unreleased)
