@@ -41,9 +41,12 @@ def test_read_only_and_write_only_areas():
     assert [key for key, value in levels.items() if value == ("read",)] == [
         "lookup.search",
         "accounts.customers",
-        "returns.attachments",
     ]
-    assert [key for key, value in levels.items() if value == ("write",)] == ["content.publish", "platform.devtools"]
+    assert [key for key, value in levels.items() if value == ("write",)] == [
+        "content.publish",
+        "returns.attachments",
+        "platform.devtools",
+    ]
 
 
 def test_publishable_scopes():

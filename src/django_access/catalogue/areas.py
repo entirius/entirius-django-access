@@ -108,7 +108,7 @@ DEFAULT_AREAS: tuple[Area, ...] = (
         ("checkout.orders", "Orders", READ_WRITE, (PII, MONEY)),
         ("checkout.discounts", "Discounts and discount codes", READ_WRITE, (MONEY,)),
     ),
-    *_module("django_returns", ("returns.attachments", "Return documents", READ_ONLY, (PII,))),
+    *_module("django_returns", ("returns.attachments", "Return documents", WRITE_ONLY, (PII,))),
     *_module(
         "django_contact_forms",
         ("contact_forms.submissions", "Form submissions and bookings", READ_WRITE, (PII,)),

@@ -12,7 +12,7 @@ on its admin root, so a new route of a known module lands in the module's broade
 import re
 from dataclasses import dataclass
 
-from django_access.catalogue.areas import STAFF_BASELINE
+from django_access.catalogue.areas import READ, STAFF_BASELINE, WRITE
 
 SEGMENT = r"[^/]+/"
 # DRF router routes end a name with "/" or with the format-suffix twin "\.(?P<format>…)".
@@ -176,4 +176,63 @@ DEFAULT_RULES: tuple[RouteRule, ...] = (
     *_module("django_munin", "api/munin/v2/health/", "munin.config"),
     # regional — api/regional/v2/admin/ (reference lists: staff baseline)
     *_module("django_regional", "api/regional/v2/admin/", STAFF_BASELINE),
+)
+
+
+@dataclass(frozen=True)
+class MethodOverride:
+    """The level ``method`` needs on routes matching ``pattern`` when the HTTP method alone decides wrong."""
+
+    pattern: str
+    method: str
+    level: str
+
+    def matches(self, route: str) -> bool:
+        return re.match(self.pattern, route) is not None
+
+
+def _overrides(method: str, level: str, *patterns: str) -> tuple[MethodOverride, ...]:
+    return tuple(MethodOverride(pattern, method, level) for pattern in patterns)
+
+
+_FEED_CHECKS = f"{SEGMENT}(?:feeds/{SEGMENT}test|mapping-profiles/{SEGMENT}validate)/$"
+
+# r01 §9 + README § Contract: 10 POST-reads → read; leads GDPR export POST, 6 GET PII exports/downloads and the 2
+# contentdb GET …/published/ → write (Viewer and Editor never export PII; reading publish state is publish).
+METHOD_OVERRIDES: tuple[MethodOverride, ...] = (
+    *_overrides(
+        "POST",
+        READ,
+        "api/lookup/v2/admin/(?:search|check)/$",
+        f"api/pricemanager/v2/admin/{SEGMENT}prices/.+/preview/$",
+        "api/deliverypoints/v2/admin/geocode/search/$",
+        f"api/suppliers/v2/admin/suppliers/{_FEED_CHECKS}",
+        f"api/atlas/v2/admin/sources/{_FEED_CHECKS}",
+        "api/munin/v2/health/check/$",
+        f"api/communicator/v2/admin/{SEGMENT}templates/{SEGMENT}test-generate/$",
+    ),
+    *_overrides("POST", WRITE, "api/leads/v2/admin/gdpr/export/$"),
+    *_overrides(
+        "GET",
+        WRITE,
+        "api/agreements/v2/admin/marketing-subscribers/export/$",
+        f"api/contact-forms/v2/admin/submissions/{SEGMENT}attachments/{SEGMENT}download/$",
+        f"api/checkout/v2/admin/{SEGMENT}orders/{SEGMENT}attachments/$",
+        f"api/enrichment/v2/admin/proposals/{SEGMENT}staged-file/$",
+        "api/returns/attachments/(?:order_return|order_attachment)/",
+        f"{_CONTENTDB_V1}(?:content|layout-extender)/.*/published{ROUTER_END}",
+    ),
+)
+# Admin although neither the path nor the view's permission classes say so (r01 §6): munin health (local
+# IsAdminUser outside /admin/), the returns session downloads, the pim staff-only viewer (pim 3.3.1).
+ADMIN_ROUTES: tuple[str, ...] = (
+    "api/munin/v2/health/",
+    "api/returns/attachments/",
+    "api-viewer/pim/",
+)
+# Not admin although the path says so: the Django admin site (session + model permissions, its own system) and the
+# X-API-ADMIN-KEY erase routes (token routes: accounts.erase, checkout.erase). Checked before ADMIN_ROUTES.
+NOT_ADMIN_ROUTES: tuple[str, ...] = (
+    "admin/",
+    rf"api-admin/(?:accounts|checkout)/{SEGMENT}{SEGMENT}customer/delete$",
 )
