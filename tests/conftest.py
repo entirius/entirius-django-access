@@ -10,6 +10,7 @@ from django.core.cache import cache
 
 from django_access.catalogue import registry
 from django_access.models import Role
+from django_access.services import route_map
 from django_access.services.access_service import Actor
 from django_access.services.permissions import ADMINISTRATOR
 
@@ -19,6 +20,7 @@ _names = itertools.count()
 @pytest.fixture(autouse=True)
 def clean_state():
     registry.reset()
+    route_map.reset()
     cache.clear()
     yield
     cache.clear()
