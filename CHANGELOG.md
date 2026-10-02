@@ -67,6 +67,14 @@
   `DEBUG=False`).
 - The gate decides HEAD like GET (Django serves HEAD with the GET handler): a HEAD of a GET PII export needs the
   export's write permission and leaves a superuser bypass row.
+- Admin API v2 under `api/access/v2/admin/` (`django_access.urls`): `catalogue/` (staff baseline: areas by module with
+  `assignable`, built-in roles with computed permissions), `roles/` + `roles/<id>/` (custom roles only change; built-in
+  or lockout → 409, `access.manage` → 400 `ACCESS_MANAGE_RESERVED`), `grants/` + `grants/<id>/`, `staff/` +
+  `staff/<user_id>/` (active staff only; anything else → 404), `groups/`, `audit/` (filters `action`, `actor`, `from`,
+  `to`). JWT only, `IsStaffUser` + `HasAreaPermission` (`access.manage:read`/`:write`) on every admin view, Pydantic
+  schemas with `extra="forbid"`; `GET api/access/v2/me/` for any authenticated user. Audit rows carry the client
+  address by `REST_FRAMEWORK["NUM_PROXIES"]` (unset → `REMOTE_ADDR`). A racing duplicate role or grant is a conflict,
+  not an `IntegrityError`.
 - Requires Django 5.1+.
 
 ## 0.1.0 (unreleased)
