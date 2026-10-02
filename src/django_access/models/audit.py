@@ -19,6 +19,8 @@ class AuditAction:
     TOKEN_CREATE = "token.create"  # noqa: S105 — an audit action name
     TOKEN_ROTATE = "token.rotate"  # noqa: S105 — an audit action name
     TOKEN_REVOKE = "token.revoke"  # noqa: S105 — an audit action name
+    LEGACY_IMPORT = "legacy.import"
+    LEGACY_PURGE = "legacy.purge"
     GATE_BYPASS = "gate.bypass"
 
 

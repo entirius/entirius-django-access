@@ -18,6 +18,13 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "drf_spectacular",
     "django_access",
+    # Legacy key sources (plan 08): fake modules under the real app labels.
+    "tests.legacy_apps.accounts",
+    "tests.legacy_apps.checkout",
+    "tests.legacy_apps.contact_forms",
+    "tests.legacy_apps.returns",
+    "tests.legacy_apps.reviews",
+    "tests.legacy_apps.vault",
 ]
 # The service's order (without corsheaders / allauth), the gate appended.
 MIDDLEWARE = [

@@ -2,9 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 import itertools
+import secrets
 from datetime import timedelta
 
 import pytest
+from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.cache import cache
@@ -84,6 +86,20 @@ def key_request():
     """``key_request(HTTP_X_API_KEY=…, HTTP_X_API_ADMIN_KEY=…)`` → a GET request carrying those headers."""
     factory = RequestFactory()
     return lambda **headers: factory.get("/", **headers)
+
+
+@pytest.fixture
+def legacy_row(db):
+    """``legacy_row("django_checkout.APIKey", channel="emporium", key=…, **fields)`` → a row of a fake legacy module;
+    a fresh 64-hex secret by default (the shape ``generate_key()`` produces)."""
+
+    def make(model: str, *, channel: str | None = None, key: str | None = None, **fields):
+        cls = apps.get_model(model)
+        if channel is not None:
+            fields["channel"], _ = cls._meta.get_field("channel").related_model.objects.get_or_create(idx=channel)
+        return cls.objects.create(key=secrets.token_hex(32) if key is None else key, **fields)
+
+    return make
 
 
 class Clock:
