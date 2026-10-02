@@ -54,13 +54,14 @@ def test_cell(client, principal, ran, who, route, method, mode):
 
 def test_oracle_sanity_readme_invariants():
     """An explicit check of the oracle itself, as literal cells: Viewer and Editor never reach a PII export; only a
-    staff superuser reaches an unmapped route; a token-only request is anonymous."""
+    staff superuser reaches an unmapped route (without is_staff the view refuses); a token-only request is
+    anonymous."""
     export, download, unmapped = ROUTES["pii_export"], ROUTES["pii_download"], ROUTES["unmapped"]
     for who in ("viewer", "editor"):
         assert expected(PRINCIPALS[who], export, "GET", "enforce") == ACCESS_DENIED, who
         assert expected(PRINCIPALS[who], download, "GET", "enforce") == ACCESS_DENIED, who
     assert expected(PRINCIPALS["superuser"], unmapped, "POST", "enforce") == RAN
-    assert expected(PRINCIPALS["superuser_not_staff"], unmapped, "POST", "enforce") == "STAFF_ONLY"
+    assert expected(PRINCIPALS["superuser_not_staff"], unmapped, "POST", "enforce") == "view403"
     assert expected(PRINCIPALS["manager"], unmapped, "GET", "enforce") == "UNMAPPED_ROUTE"
     assert expected(PRINCIPALS["token_every_scope"], unmapped, "GET", "enforce") == "view401"
 

@@ -92,10 +92,10 @@ def decide(request: HttpRequest, view_func: Callable) -> Decision:
     # Django serves HEAD with the GET handler, so HEAD needs what GET needs (a GET PII export is a write).
     method = "GET" if request.method == "HEAD" else request.method
     needed = route_map.required_permission(info, method)
-    if not user.is_staff:  # a superuser too: the baseline is active staff (D11)
-        return Decision(False, 403, STAFF_ONLY, needed)
-    if user.is_superuser:
+    if user.is_superuser:  # without is_staff too: the view's IsAdminUser / IsStaffUser refuses them (bypass row kept)
         return Decision(True, needed=needed, bypass=_is_write(needed, method))
+    if not user.is_staff:
+        return Decision(False, 403, STAFF_ONLY, needed)
     return _staff_decision(user, info, needed)
 
 

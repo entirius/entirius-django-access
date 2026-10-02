@@ -139,10 +139,10 @@ def expected(who: Principal, route: Route, method: str, mode: str) -> str:
         return view_answer(who, route)
     if not gate_sees_user(who, route):
         return view_answer(who, route) if route.self_auth else GATE401
-    if not who.staff:  # a superuser without is_staff too (D11)
-        return STAFF_ONLY
     if who.superuser:
         return view_answer(who, route)
+    if not who.staff:
+        return STAFF_ONLY
     if route.area is None:
         return UNMAPPED_ROUTE
     if route.area == BASELINE:
@@ -153,9 +153,9 @@ def expected(who: Principal, route: Route, method: str, mode: str) -> str:
 
 
 def expects_bypass_row(who: Principal, route: Route, method: str, mode: str) -> bool:
-    """One ``gate.bypass`` row: a staff superuser the gate sees, on a write of a mapped area or an unsafe method on an
+    """One ``gate.bypass`` row: a superuser the gate sees, on a write of a mapped area or an unsafe method on an
     unmapped route, in every mode but ``off``."""
-    if mode == "off" or not route.admin or not (who.superuser and who.staff) or not gate_sees_user(who, route):
+    if mode == "off" or not route.admin or not who.superuser or not gate_sees_user(who, route):
         return False
     if route.area is None:
         return method not in SAFE

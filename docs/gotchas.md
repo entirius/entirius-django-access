@@ -30,8 +30,10 @@ where it is enforced.
   its own 401. A view on DRF's default Session + Basic gets the gate's 401.
 - **The route map is memoized per process.** URLs added at run time (tests patching the urlconf) need
   `route_map.reset()`.
-- **A superuser without `is_staff` is refused** — 403 `STAFF_ONLY` by the gate, 403 by `IsStaffUser` with the gate
-  off — although `effective_permissions` gives them everything.
+- **A superuser without `is_staff` passes the gate but no admin view.** The gate lets them through (writes leave a
+  `gate.bypass` row with the view's 403); `IsAdminUser` and the access API's `IsStaffUser` (active staff only, in
+  every gate mode) refuse them, although `effective_permissions` gives them everything. The lockout guard counts only
+  staff superusers.
 
 ## Tokens
 

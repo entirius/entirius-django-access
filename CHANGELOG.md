@@ -59,12 +59,11 @@
   `services.gate.decide()`: acts only on the admin set (outside it one memoized `classify()`, no authentication,
   cache or query); the principal is what the view's own JWT/session authenticators would see (a session never counts
   on a JWT-only view; API-key headers are never read); anonymous callers reach only self-authenticating views, else
-  401 `NOT_AUTHENTICATED` + `WWW-Authenticate: Bearer realm="api"`; non-staff → 403 `STAFF_ONLY` (a superuser without
-  `is_staff` included); a staff superuser passes, with one `gate.bypass` audit row per write (GET PII exports
-  included, any unsafe method on a route without an area with `needed: null`) written after the response with its
-  status;
-  admin route without an area → 403 `UNMAPPED_ROUTE`, missing permission or a write on a read-only area → 403
-  `ACCESS_DENIED` (v2 envelope); an exception in the decision → the v2 500 envelope, view not run.
+  401 `NOT_AUTHENTICATED` + `WWW-Authenticate: Bearer realm="api"`; superuser passes, with one `gate.bypass` audit
+  row per write (GET PII exports included, any unsafe method on a route without an area with `needed: null`) written
+  after the response with its status; non-staff → 403 `STAFF_ONLY`, admin route without an area → 403
+  `UNMAPPED_ROUTE`, missing permission or a write on a read-only area → 403 `ACCESS_DENIED` (v2 envelope); an
+  exception in the decision → the v2 500 envelope, view not run.
 - `ACCESS_GATE_MODE` = `enforce` (default) | `observe` (log refusals on `django_access.gate`, let through) | `off`;
   any other value is enforced. System checks `django_access.E010` (invalid mode) and `W010` (not `enforce` with
   `DEBUG=False`).

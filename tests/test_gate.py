@@ -126,11 +126,10 @@ def test_bypass_row_records_the_view_refusal(client, superuser, monkeypatch):
     assert AuditEntry.objects.get(action="gate.bypass").detail["status"] == 409
 
 
-def test_superuser_without_staff_is_staff_only(client, make_user):
+def test_superuser_without_staff_passes_the_gate_and_the_view_refuses(client, make_user):
     response = client.post(urls.ADMIN, **bearer(make_user(is_superuser=True, is_staff=False)))
-    assert response.status_code == 403
-    assert response.json()["details"][0]["issue"] == "STAFF_ONLY"
-    assert not AuditEntry.objects.filter(action="gate.bypass").exists()
+    assert (response.status_code, response.json()["details"]) == (403, [])  # IsAdminUser, not the gate
+    assert AuditEntry.objects.get(action="gate.bypass").detail["status"] == 403
 
 
 def test_superuser_write_on_an_unmapped_route_leaves_a_bypass_row(client, superuser):
