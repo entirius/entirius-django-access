@@ -176,6 +176,8 @@ DEFAULT_RULES: tuple[RouteRule, ...] = (
     *_module("django_munin", "api/munin/v2/health/", "munin.config"),
     # regional — api/regional/v2/admin/ (reference lists: staff baseline)
     *_module("django_regional", "api/regional/v2/admin/", STAFF_BASELINE),
+    # access — api/access/v2/admin/ (the catalogue: staff baseline; me/ is outside the admin set)
+    *_module("django_access", "api/access/v2/admin/", ACCESS_MANAGE, ("catalogue/$", STAFF_BASELINE)),
 )
 
 

@@ -19,7 +19,7 @@ def area_for(route: str) -> str | None:
 def test_counts():
     assert len(DEFAULT_AREAS) == 48
     assert len(DEFAULT_SCOPES) == 9
-    assert len({rule.module for rule in DEFAULT_RULES}) == 25
+    assert len({rule.module for rule in DEFAULT_RULES}) == 26  # the 25 modules + access itself
 
 
 def test_keys_are_unique_and_well_formed():
