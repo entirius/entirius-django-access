@@ -20,16 +20,17 @@ def historical_apps():
     return MigrationExecutor(connection).loader.project_state(("django_access", NAME)).apps
 
 
-def test_staff_become_administrators_once(make_user, historical_apps):
-    staff, customer, inactive = make_user(), make_user(is_staff=False), make_user(is_active=False)
-    migration.grant_administrator_to_staff(historical_apps, None)
-    migration.grant_administrator_to_staff(historical_apps, None)
+def test_staff_become_managers_once(make_user, historical_apps):
+    staff = make_user()
+    others = [make_user(is_staff=False), make_user(is_active=False), make_user(is_superuser=True)]
+    migration.grant_manager_to_staff(historical_apps, None)
+    migration.grant_manager_to_staff(historical_apps, None)
     grant = Grant.objects.get()
-    assert (grant.user, grant.role.key) == (staff, "administrator")
-    assert not Grant.objects.filter(user__in=[customer, inactive]).exists()
+    assert (grant.user, grant.role.key) == (staff, "manager")
+    assert not Grant.objects.filter(user__in=others).exists()
     entry = AuditEntry.objects.get()
     assert (entry.action, entry.actor, entry.actor_label) == ("grant.migrate", None, "system")
-    assert entry.target_id == str(grant.pk)
+    assert (entry.target_id, entry.detail["role"]) == (str(grant.pk), "manager")
 
 
 def test_frozen_roles_match_the_code():
