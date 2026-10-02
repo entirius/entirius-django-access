@@ -60,6 +60,7 @@ quote-style = "double"
 DJANGO_SETTINGS_MODULE = "tests.settings"
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "-rs"  # name every skip: the local sqlite run skips the Postgres-only lockout race
 
 [tool.deptry]
 pep621_dev_dependency_groups = ["dev", "test"]
