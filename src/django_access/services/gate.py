@@ -16,9 +16,10 @@ from dataclasses import dataclass
 
 from django.conf import settings
 from django.http import HttpRequest, JsonResponse
-from django_utils.api.v2_errors import _STATUS_TO_MESSAGE, ErrorDetail, ErrorResponse
+from django_utils.api.v2_errors import ErrorDetail, ErrorResponse
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
+from rest_framework.permissions import SAFE_METHODS
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from django_access.catalogue import registry
@@ -38,15 +39,19 @@ NOT_AUTHENTICATED = "NOT_AUTHENTICATED"
 JWT_AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication"
 SESSION_AUTH = "rest_framework.authentication.SessionAuthentication"
 WWW_AUTHENTICATE = 'Bearer realm="api"'
+# The v2 exception handler's texts, pinned here (django-utils keeps them private); a test compares them with its output.
+AUTHENTICATION_MESSAGE = "Authentication credentials were not provided or are invalid."
+PERMISSION_MESSAGE = "You do not have permission to perform this action."
+INTERNAL_MESSAGE = "An internal error occurred."
 _DESCRIPTIONS = {
     STAFF_ONLY: "A staff account is required.",
     UNMAPPED_ROUTE: "This admin route has no access area.",
-    NOT_AUTHENTICATED: _STATUS_TO_MESSAGE[401],
+    NOT_AUTHENTICATED: AUTHENTICATION_MESSAGE,
 }
 # The v2 exception handler's codes and texts, so clients and BDD steps read a gate refusal like a view's.
 _ENVELOPES = {
-    401: ("AUTHENTICATION_REQUIRED", _STATUS_TO_MESSAGE[401], "header"),
-    403: ("PERMISSION_DENIED", _STATUS_TO_MESSAGE[403], "path"),
+    401: ("AUTHENTICATION_REQUIRED", AUTHENTICATION_MESSAGE, "header"),
+    403: ("PERMISSION_DENIED", PERMISSION_MESSAGE, "path"),
 }
 _reported_modes: set[str] = set()
 
@@ -87,11 +92,18 @@ def decide(request: HttpRequest, view_func: Callable) -> Decision:
     # Django serves HEAD with the GET handler, so HEAD needs what GET needs (a GET PII export is a write).
     method = "GET" if request.method == "HEAD" else request.method
     needed = route_map.required_permission(info, method)
-    if user.is_superuser:
-        return Decision(True, needed=needed, bypass=bool(needed) and needed.endswith(f":{WRITE}"))
-    if not user.is_staff:
+    if not user.is_staff:  # a superuser too: the baseline is active staff (D11)
         return Decision(False, 403, STAFF_ONLY, needed)
+    if user.is_superuser:
+        return Decision(True, needed=needed, bypass=_is_write(needed, method))
     return _staff_decision(user, info, needed)
+
+
+def _is_write(needed: str | None, method: str) -> bool:
+    """A superuser write worth a bypass row: a write permission, or any unsafe method on a route without an area."""
+    if needed is None:
+        return method not in SAFE_METHODS
+    return needed.endswith(f":{WRITE}")
 
 
 def _staff_decision(user, info: RouteInfo, needed: str | None) -> Decision:
@@ -179,7 +191,7 @@ def refusal(decision: Decision) -> JsonResponse:
 
 
 def internal_error(debug_id: str) -> JsonResponse:
-    body = ErrorResponse(error="INTERNAL_ERROR", message=_STATUS_TO_MESSAGE[500], debug_id=debug_id)
+    body = ErrorResponse(error="INTERNAL_ERROR", message=INTERNAL_MESSAGE, debug_id=debug_id)
     return JsonResponse(body.model_dump(), status=500)
 
 

@@ -12,7 +12,6 @@ import pytest
 from django.core.cache.backends.locmem import LocMemCache
 from django.db import DatabaseError, connection
 from django.test import override_settings
-from django_utils.api.v2_errors import _STATUS_TO_MESSAGE
 
 from django_access.services import permissions
 from tests.security import urls
@@ -74,7 +73,7 @@ def test_enforce_fails_closed(client, viewer, failure, ran, caplog):
     assert (body["error"], body["details"]) == ("INTERNAL_ERROR", [])
     assert re.fullmatch(r"[0-9a-f]{8}", body["debug_id"])
     assert FAILURE_TEXT not in response.content.decode()
-    assert body["message"] == _STATUS_TO_MESSAGE[500]
+    assert body["message"] == "An internal error occurred."
     assert ran == []
     assert f"[{body['debug_id']}]" in caplog.text
 

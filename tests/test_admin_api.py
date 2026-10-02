@@ -71,7 +71,7 @@ def test_catalogue_is_the_staff_baseline(name, person, api_as):
 
 @override_settings(ACCESS_GATE_MODE="off")
 @pytest.mark.parametrize(("method", "path", "body"), MANAGE_ENDPOINTS)
-@pytest.mark.parametrize("name", ["customer", "viewer", "manager"])
+@pytest.mark.parametrize("name", ["customer", "viewer", "manager", "superuser_not_staff"])
 def test_views_refuse_without_the_gate(name, method, path, body, targets, person, api_as):
     response = call(client_of(name, person, api_as), method, path, body, targets)
     assert response.status_code == 403

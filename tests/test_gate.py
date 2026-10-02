@@ -11,6 +11,10 @@ import pytest
 from django.db import connection
 from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
+from django_utils.api.v2_errors import v2_exception_handler
+from rest_framework.exceptions import NotAuthenticated
+from rest_framework.exceptions import PermissionDenied as DrfPermissionDenied
+from rest_framework.response import Response
 
 from django_access.checks import gate_mode_is_valid
 from django_access.models import AuditEntry
@@ -81,6 +85,18 @@ def test_gate_403_bodies(client, make_user, viewer, path, who, issue, descriptio
     }
 
 
+@pytest.mark.parametrize(
+    ("exc", "message"),
+    [
+        (NotAuthenticated(), gate.AUTHENTICATION_MESSAGE),
+        (DrfPermissionDenied(), gate.PERMISSION_MESSAGE),
+        (RuntimeError(), gate.INTERNAL_MESSAGE),
+    ],
+)
+def test_pinned_messages_match_the_v2_handler(exc, message):
+    assert v2_exception_handler(exc, {}).data["message"] == message
+
+
 def test_unmapped_route_is_logged_at_error(client, viewer, caplog):
     with caplog.at_level(logging.ERROR, logger="django_access.gate"):
         client.get(urls.UNMAPPED, **viewer)
@@ -104,10 +120,24 @@ def test_superuser_read_leaves_no_row(client, superuser):
     assert not AuditEntry.objects.filter(action="gate.bypass").exists()
 
 
-def test_bypass_row_records_the_view_refusal(client, make_user):
+def test_bypass_row_records_the_view_refusal(client, superuser, monkeypatch):
+    monkeypatch.setattr(urls.JwtAdminView, "post", lambda self, request, **kwargs: Response(status=409))
+    assert client.post(urls.ADMIN, **superuser).status_code == 409
+    assert AuditEntry.objects.get(action="gate.bypass").detail["status"] == 409
+
+
+def test_superuser_without_staff_is_staff_only(client, make_user):
     response = client.post(urls.ADMIN, **bearer(make_user(is_superuser=True, is_staff=False)))
     assert response.status_code == 403
-    assert AuditEntry.objects.get(action="gate.bypass").detail["status"] == 403
+    assert response.json()["details"][0]["issue"] == "STAFF_ONLY"
+    assert not AuditEntry.objects.filter(action="gate.bypass").exists()
+
+
+def test_superuser_write_on_an_unmapped_route_leaves_a_bypass_row(client, superuser):
+    client.get(urls.UNMAPPED, **superuser)
+    client.post(urls.UNMAPPED, **superuser)
+    [row] = AuditEntry.objects.filter(action="gate.bypass")
+    assert row.detail == {"method": "POST", "route": urls.UNMAPPED[1:], "needed": None, "status": 200}
 
 
 def test_bypass_audit_failure_keeps_the_response(client, superuser, monkeypatch, caplog):

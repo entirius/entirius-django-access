@@ -115,7 +115,7 @@ def has_permission(user, permission: str) -> bool:
     ``ValueError`` for a key the catalogue does not offer — a typo must fail loudly, not match a held write.
     """
     if permission == STAFF_BASELINE:
-        return bool(getattr(user, "is_active", False) and (user.is_staff or user.is_superuser))
+        return bool(getattr(user, "is_active", False) and user.is_staff)
     area_key = registry.parse_perm(permission)[0].key
     held = effective_permissions(user).get(area_key)
     return held is not None and registry.implies(f"{area_key}:{held}", permission)

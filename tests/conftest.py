@@ -136,6 +136,7 @@ def person(make_user, role, system):
         "manager": lambda: granted(MANAGER),
         "administrator": lambda: granted(ADMINISTRATOR),
         "superuser": lambda: make_user(is_superuser=True),
+        "superuser_not_staff": lambda: make_user(is_superuser=True, is_staff=False),
     }
     return lambda name: builders[name]()
 

@@ -11,7 +11,7 @@ from django_access.services import permissions
 
 
 class IsStaffUser(IsAdminUser):
-    """An active staff user or superuser (the route map reads the ``IsAdminUser`` base: admin, self-authenticating)."""
+    """An active staff user, a superuser included only with ``is_staff`` (the route map reads the ``IsAdminUser`` base: admin, self-authenticating)."""
 
     def has_permission(self, request, view) -> bool:
         return permissions.has_permission(request.user, STAFF_BASELINE)
