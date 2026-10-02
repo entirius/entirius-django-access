@@ -29,6 +29,19 @@
 - `catalogue.defaults.METHOD_OVERRIDES`: 10 POST-reads → read, leads GDPR export and 6 GET PII exports/downloads →
   write, contentdb GET `…/published/` → `content.publish:write`. `returns.attachments` is write-only.
 - `manage.py access_routes [--check] [--json PATH]`.
+- Application tokens: models `Application` and `ApiToken` (migration `0003`). Raw value `ent_api_` +
+  `secrets.token_urlsafe(32)`, shown once; stored as SHA-256 `key_hash` (unique index), `prefix` (12) and `last_four`.
+- `services.tokens`: `issue_token`, `rotate_token` (successor + overlap window), `revoke_token`, `create_application`
+  (each audited `application.create` / `token.create|rotate|revoke`, never with the raw value or `key_hash`), and
+  `verify_api_key(request, scope, channel_idx=None)`: `X-API-KEY`, else `X-API-ADMIN-KEY`; one uncached lookup by
+  hash; `None` for every failure (unknown, expired, revoked, inactive application, wrong or empty scopes, channel
+  mismatch); values over 256 characters run no query; `last_used_at` by a conditional update at most once per
+  `ACCESS_TOKEN_LAST_USED_INTERVAL_S` (300).
+- Scope rules: at least one catalogue scope; publishable and secret scopes never share a token; a token with a secret
+  scope must expire within `ACCESS_SECRET_TOKEN_MAX_TTL_DAYS` (365) — `TokenExpiryError` (`EXPIRY_REQUIRED` /
+  `EXPIRY_TOO_LONG`); rotation keeps a secret token's lifetime within the cap.
+- `manage.py access_token create|rotate|revoke|list`; read-only Django admin for applications and tokens, no add,
+  no `key_hash`.
 - Requires Django 5.1+.
 
 ## 0.1.0 (unreleased)
