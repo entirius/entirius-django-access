@@ -75,6 +75,16 @@
   schemas with `extra="forbid"`; `GET api/access/v2/me/` for any authenticated user. Audit rows carry the client
   address by `REST_FRAMEWORK["NUM_PROXIES"]` (unset → `REMOTE_ADDR`). A racing duplicate role or grant is a conflict,
   not an `IntegrityError`.
+- Token API v2 under `api/access/v2/admin/`: `applications/` + `applications/<id>/` (list, create, PATCH `name`,
+  `description`, `is_active`; no DELETE; a name in use → 409), `applications/<id>/tokens/` (list, issue),
+  `tokens/<id>/rotate/` (`overlap_hours` 0–168, default 24; revoked → 409) and `tokens/<id>/revoke/` (idempotent, one
+  audit row). The raw value is only in the issue and rotate responses (`Cache-Control: no-store`, `Pragma: no-cache`);
+  no response carries `key_hash`; token rows show `state` `active` | `expired` | `revoked`. Secret-scope expiry errors
+  → 400 `EXPIRY_REQUIRED` / `EXPIRY_TOO_LONG` on `expires_at`. `services.tokens.update_application` (field whitelist,
+  audited `application.update`) and `lifecycle_state`. The catalogue lists the token scopes.
+- `django_access.openapi.add_api_key_security`: drf-spectacular postprocessing hook adding the `ApiKeyAuth` scheme
+  (`apiKey`, header `X-API-KEY`) and requiring it on every operation matching a token scope's routes, next to the
+  operation's existing requirements.
 - Requires Django 5.1+.
 
 ## 0.1.0 (unreleased)
