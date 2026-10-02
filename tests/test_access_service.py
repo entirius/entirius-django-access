@@ -3,7 +3,8 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 import pytest
 
-from django_access.exceptions import AccessConflict, AccessLockout
+from django_access.catalogue import registry
+from django_access.exceptions import AccessConflict, AccessLockout, ReservedPermission
 from django_access.models import AuditEntry, Grant, Role
 from django_access.services import access_service
 from django_access.services.access_service import Actor, RoleInput
@@ -71,14 +72,54 @@ def test_revoking_the_last_administrator_is_refused(admin_grant, system):
     assert actions() == ["grant.create"]
 
 
-def test_lockout_holds_for_a_custom_manager_role(make_user, system):
-    manager = access_service.create_role(RoleInput("keeper", "Keeper", permissions=["access.manage:write"]), system)
-    grant = access_service.grant_role(manager, user=make_user(), actor=system)
+def test_lockout_holds_for_a_group_administrator(make_user, role, group, system):
+    make_user().groups.add(group)
+    grant = access_service.grant_role(role("administrator"), group=group, actor=system)
+    grant_id = grant.pk
     with pytest.raises(AccessLockout):
-        access_service.update_role(manager, {"permissions": ["access.manage:read"]}, system)
-    with pytest.raises(AccessLockout):
-        access_service.delete_role(manager, system)
-    assert Grant.objects.filter(pk=grant.pk).exists()
+        access_service.revoke_grant(grant, system)
+    assert Grant.objects.filter(pk=grant_id).exists()
+
+
+@pytest.mark.parametrize("key", ["access.manage:read", "access.manage:write"])
+def test_custom_role_cannot_be_created_with_access_manage(key, system):
+    with pytest.raises(ReservedPermission) as raised:
+        access_service.create_role(RoleInput("keeper", "Keeper", permissions=["faq.faq:read", key]), system)
+    assert raised.value.keys == [key]
+    assert isinstance(raised.value, ValueError)
+    assert not Role.objects.filter(key="keeper").exists()
+    assert not AuditEntry.objects.exists()
+
+
+@pytest.mark.parametrize("key", ["access.manage:read", "access.manage:write"])
+def test_custom_role_cannot_gain_access_manage(key, admin_grant, system):
+    custom = access_service.create_role(RoleInput("faq", "FAQ", permissions=["faq.faq:read"]), system)
+    with pytest.raises(ReservedPermission):
+        access_service.update_role(custom, {"name": "Keeper", "permissions": [key]}, system)
+    custom.refresh_from_db()
+    assert custom.name == "FAQ"
+    assert list(custom.permissions.values_list("permission", flat=True)) == ["faq.faq:read"]
+    assert actions() == ["grant.create", "role.create"]
+
+
+def test_custom_role_areas_exclude_access_manage():
+    keys = {item.key for item in registry.custom_role_areas()}
+    assert "access.manage" not in keys
+    assert keys == {item.key for item in registry.areas()} - {"access.manage"}
+
+
+def test_administrator_still_holds_access_manage(admin_grant):
+    from django_access.services.permissions import manages_access
+
+    assert manages_access(admin_grant.user)
+
+
+@pytest.mark.parametrize("flags", [{"is_staff": False}, {"is_active": False}])
+def test_grant_target_must_be_active_staff(flags, make_user, role, system):
+    with pytest.raises(ValueError, match="active staff"):
+        access_service.grant_role(role("viewer"), user=make_user(**flags), actor=system)
+    assert not Grant.objects.exists()
+    assert not AuditEntry.objects.exists()
 
 
 def test_group_administrators_count(make_user, role, group, system):
@@ -100,7 +141,8 @@ def test_revoke_allowed_with_an_active_superuser(admin_grant, make_user, system)
     assert not Grant.objects.exists()
 
 
-def test_inactive_superuser_does_not_count(admin_grant, make_user, system):
-    make_user(is_superuser=True, is_active=False)
+@pytest.mark.parametrize("flags", [{"is_active": False}, {"is_staff": False}])
+def test_unusable_superuser_does_not_count(flags, admin_grant, make_user, system):
+    make_user(is_superuser=True, **flags)
     with pytest.raises(AccessLockout):
         access_service.revoke_grant(admin_grant, system)

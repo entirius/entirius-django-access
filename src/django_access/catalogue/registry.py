@@ -13,7 +13,7 @@ import functools
 
 from django.apps import apps
 
-from django_access.catalogue.areas import DEFAULT_AREAS, WRITE, Area
+from django_access.catalogue.areas import ACCESS_MANAGE, DEFAULT_AREAS, WRITE, Area
 from django_access.catalogue.defaults import DEFAULT_RULES, RouteRule
 from django_access.catalogue.scopes import DEFAULT_SCOPES, TokenScope
 
@@ -73,6 +73,11 @@ def reset() -> None:
 
 def areas() -> tuple[Area, ...]:
     return catalogue().areas
+
+
+def custom_role_areas() -> tuple[Area, ...]:
+    """The areas a custom role may hold: every area except ``access.manage`` (built-in Administrator only)."""
+    return tuple(item for item in areas() if item.key != ACCESS_MANAGE)
 
 
 def scopes() -> tuple[TokenScope, ...]:

@@ -5,7 +5,8 @@
 
 The guard wraps every change that can take access away (update, delete, revoke): when an access manager existed before
 and none is left after, it raises ``AccessLockout`` and the whole transaction rolls back. Creating a role or a grant
-cannot take access away, so it skips the two guard queries.
+cannot take access away, so it skips the two guard queries. ``access.manage`` is never part of a custom role, and grants
+go only to active staff users (or to a group).
 """
 
 from contextlib import contextmanager
@@ -18,7 +19,8 @@ from django.db import models, transaction
 from django.db.models import Q
 
 from django_access.catalogue import registry
-from django_access.exceptions import AccessConflict, AccessLockout
+from django_access.catalogue.areas import ACCESS_MANAGE
+from django_access.exceptions import AccessConflict, AccessLockout, ReservedPermission
 from django_access.models import AuditAction, AuditEntry, Grant, Role, RolePermission
 from django_access.services.permissions import ADMINISTRATOR, MANAGE_ACCESS_PERMISSION, bump_version
 
@@ -60,9 +62,11 @@ def record_audit(action: str, actor: Actor, target: models.Model, detail: dict |
 
 
 def _validated(permissions: list[str]) -> list[str]:
-    """Deduplicated, sorted keys; ``ValueError`` for any key the catalogue does not offer."""
-    for key in permissions:
-        registry.parse_perm(key)
+    """Deduplicated, sorted keys; ``ValueError`` for any key the catalogue does not offer, ``ReservedPermission`` for
+    ``access.manage`` (built-in Administrator only)."""
+    reserved = sorted({key for key in permissions if registry.parse_perm(key)[0].key == ACCESS_MANAGE})
+    if reserved:
+        raise ReservedPermission(reserved)
     return sorted(set(permissions))
 
 
@@ -77,15 +81,15 @@ def _refuse_builtin(role: Role) -> None:
 
 
 def has_access_manager() -> bool:
-    """Whether an active superuser or an active staff user holding access.manage:write exists."""
-    users = get_user_model().objects.filter(is_active=True)
+    """Whether an active staff superuser or an active staff user holding access.manage:write exists."""
+    users = get_user_model().objects.filter(is_active=True, is_staff=True)
     if users.filter(is_superuser=True).exists():
         return True
     managing_roles = Role.objects.filter(
         Q(key=ADMINISTRATOR, builtin=True) | Q(permissions__permission=MANAGE_ACCESS_PERMISSION)
     )
     holders = Q(access_grants__role__in=managing_roles) | Q(groups__access_grants__role__in=managing_roles)
-    return users.filter(holders, is_staff=True).exists()
+    return users.filter(holders).exists()
 
 
 @contextmanager
@@ -162,9 +166,11 @@ def _holder_detail(grant: Grant) -> dict:
 
 @transaction.atomic
 def grant_role(role: Role, *, user=None, group: Group | None = None, actor: Actor) -> Grant:
-    """Grant the role to exactly one user or one group."""
+    """Grant the role to exactly one active staff user or one group."""
     if (user is None) == (group is None):
         raise ValueError("Grant a role to exactly one of user or group")
+    if user is not None and not (user.is_active and user.is_staff):
+        raise ValueError("Grant target must be an active staff user")
     if Grant.objects.filter(role=role, user=user, group=group).exists():
         raise AccessConflict(f"Role {role.key!r} is already granted")
     grant = Grant.objects.create(role=role, user=user, group=group, created_by=actor.user)

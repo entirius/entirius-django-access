@@ -68,9 +68,12 @@ def test_staff_without_grant_has_only_the_baseline(make_user):
     "flags", [{"is_staff": False}, {"is_active": False}, {"is_active": False, "is_superuser": True}]
 )
 def test_non_staff_and_inactive_get_nothing(flags, make_user, role, system):
-    user = make_user(**flags)
+    user = make_user()
     access_service.grant_role(role("administrator"), user=make_user(), actor=system)
     access_service.grant_role(role("manager"), user=user, actor=system)
+    for name, value in flags.items():
+        setattr(user, name, value)
+    user.save()
     assert effective_permissions(user) == {}
     assert not has_permission(user, STAFF_BASELINE)
 
