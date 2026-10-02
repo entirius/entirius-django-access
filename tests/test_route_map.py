@@ -11,7 +11,7 @@ from django.core.management import CommandError, call_command
 from django.test import override_settings
 from django.urls import resolve
 
-from django_access.catalogue.defaults import METHOD_OVERRIDES
+from django_access.catalogue.defaults import DEFAULT_RULES, FRAMEWORK_RULES, METHOD_OVERRIDES
 from django_access.services.route_map import audit_routes, classify, required_permission, walk
 from tests import route_map_urls as views
 
@@ -43,6 +43,13 @@ def walked() -> dict:
 
 def info(route: str):
     return classify(route, walked()[route])
+
+
+def served(route: str):
+    """A function view of the module whose default rule matches the route (rules apply to their own module only)."""
+    path = route.removeprefix("^")
+    module = next((rule.module for rule in (*DEFAULT_RULES, *FRAMEWORK_RULES) if rule.matches(path)), "tests")
+    return views.owned(module, views.download)
 
 
 def test_walked_route_is_resolver_match_route():
@@ -90,18 +97,19 @@ def test_permission_classifier(permission_classes, admin):
     assert classify("api/x/v2/thing/", view.as_view()).admin is admin
 
 
-def test_django_admin_site_and_exceptions_by_path():
-    assert classify("admin/auth/user/", views.download).admin is False
-    assert classify("api/munin/v2/health/check/", views.download).admin is True
-    assert classify("api-viewer/pim/<str:version>/<str:shop_idx>/products/", views.download).area == "pim.products"
-    assert classify("api-viewer/pim/<str:version>/<str:shop_idx>/products/", views.download).admin is True
-    assert classify("api-admin/checkout/<str:version>/<str:channel_idx>/customer/delete", views.download).admin is False
+def test_exceptions_by_path():
+    viewer = "api-viewer/pim/<str:version>/<str:shop_idx>/products/"
+    assert classify("api/munin/v2/health/check/", served("api/munin/v2/health/check/")).admin is True
+    assert (classify(viewer, served(viewer)).admin, classify(viewer, served(viewer)).area) == (True, "pim.products")
+    erase = "api-admin/checkout/<str:version>/<str:channel_idx>/customer/delete"
+    assert classify(erase, views.owned("django_checkout", views.download)).admin is False
 
 
 def test_owner_from_view_class_function_or_rule():
-    assert info("api/faq/v2/admin/questions/").owner == "tests"
-    assert info("api-admin/contentdb/<str:version>/content-types/$").owner == "tests"
-    assert info("api/returns/attachments/order_return/<uuid:pk>").owner == "tests"
+    assert info("api/faq/v2/admin/questions/").owner == "django_faq"
+    assert info("api-admin/contentdb/<str:version>/content-types/$").owner == "django_contentdb"
+    assert info("api/returns/attachments/order_return/<uuid:pk>").owner == "django_returns"
+    assert info("api/qms/v2/stock/").owner == "tests"
     assert info("api-admin/contentdb/<str:version>/").owner == "django_contentdb"  # DRF router root
 
 
@@ -131,7 +139,7 @@ def test_classify_is_memoized_by_route():
     ],
 )
 def test_required_permission(route, method, expected):
-    assert required_permission(classify(route, views.download), method) == expected
+    assert required_permission(classify(route, served(route)), method) == expected
 
 
 # The 19 r01 §9 routes as the zeno resolver builds them, with the method and level the override gives.
@@ -194,7 +202,9 @@ def test_audit_lists_unmapped_admin_routes(tmp_path):
     data = json.loads(report.read_text())
     assert data["unmapped_admin"] == ["api/qms/v2/stock/"]
     assert (data["routes"], data["admin_routes"]) == (14, 12)
-    assert data["modules"]["tests"] == {"routes": 12, "admin": 10, "mapped": 9, "unmapped": 1}
+    assert data["modules"]["tests"] == {"routes": 1, "admin": 1, "mapped": 0, "unmapped": 1}
+    assert data["modules"]["django_contentdb"] == {"routes": 6, "admin": 6, "mapped": 6, "unmapped": 0}
+    assert data["foreign_rule_matches"] == []
     assert "UNMAPPED admin route: api/qms/v2/stock/" in out.getvalue()
 
 

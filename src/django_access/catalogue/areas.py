@@ -27,6 +27,8 @@ AREA_KEY_RE = re.compile(r"^[a-z_]+\.[a-z_]+$")
 
 # Pseudo-area of routes every active staff user reaches without a grant; never grantable.
 STAFF_BASELINE = "staff.baseline"
+# Roles, grants, tokens, audit and the Django admin site; only the built-in Administrator role holds it.
+ACCESS_MANAGE = "access.manage"
 
 
 @dataclass(frozen=True)
@@ -133,7 +135,7 @@ DEFAULT_AREAS: tuple[Area, ...] = (
     *_module("django_munin", ("munin.config", "Runtime configuration and health", READ_WRITE, (CONFIG,))),
     *_module(
         "django_access",
-        ("access.manage", "Roles, grants, application tokens and audit", READ_WRITE, (SECRET, CONFIG)),
+        (ACCESS_MANAGE, "Roles, grants, application tokens and audit", READ_WRITE, (SECRET, CONFIG)),
         ("platform.devtools", "Development-only test endpoints", WRITE_ONLY),
     ),
 )

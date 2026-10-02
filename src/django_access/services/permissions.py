@@ -15,7 +15,7 @@ from django.db import transaction
 from django.db.models import Q, QuerySet
 
 from django_access.catalogue import registry
-from django_access.catalogue.areas import READ, STAFF_BASELINE, WRITE, Area
+from django_access.catalogue.areas import ACCESS_MANAGE, READ, STAFF_BASELINE, WRITE, Area
 from django_access.models import Role
 
 ADMINISTRATOR = "administrator"
@@ -28,7 +28,6 @@ BUILTIN_ROLES = {
     EDITOR: ("Editor", "Writes content, catalogue, FAQ and e-mail templates; reads the rest."),
     VIEWER: ("Viewer", "Reads everything except access management."),
 }
-ACCESS_MANAGE = "access.manage"
 MANAGE_ACCESS_PERMISSION = f"{ACCESS_MANAGE}:{WRITE}"
 EDITOR_WRITE_AREAS = frozenset(
     {"pim.products", "pim.categories", "pim.schema", "pim.quality", "faq.faq", "email.templates"}

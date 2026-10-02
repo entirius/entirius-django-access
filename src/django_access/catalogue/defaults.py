@@ -12,7 +12,7 @@ on its admin root, so a new route of a known module lands in the module's broade
 import re
 from dataclasses import dataclass
 
-from django_access.catalogue.areas import READ, STAFF_BASELINE, WRITE
+from django_access.catalogue.areas import ACCESS_MANAGE, READ, STAFF_BASELINE, WRITE
 
 SEGMENT = r"[^/]+/"
 # DRF router routes end a name with "/" or with the format-suffix twin "\.(?P<format>…)".
@@ -230,9 +230,18 @@ ADMIN_ROUTES: tuple[str, ...] = (
     "api/returns/attachments/",
     "api-viewer/pim/",
 )
-# Not admin although the path says so: the Django admin site (session + model permissions, its own system) and the
-# X-API-ADMIN-KEY erase routes (token routes: accounts.erase, checkout.erase). Checked before ADMIN_ROUTES.
-NOT_ADMIN_ROUTES: tuple[str, ...] = (
-    "admin/",
-    rf"api-admin/(?:accounts|checkout)/{SEGMENT}{SEGMENT}customer/delete$",
+# Not admin although the path says so: the X-API-ADMIN-KEY erase routes (token routes: accounts.erase,
+# checkout.erase). Checked before ADMIN_ROUTES.
+NOT_ADMIN_ROUTES: tuple[str, ...] = (rf"api-admin/(?:accounts|checkout)/{SEGMENT}{SEGMENT}customer/delete$",)
+# The only rules for routes served by a framework package (django, rest_framework, drf_spectacular): the contentdb
+# DefaultRouter root, the Django admin site (root-equivalent: is_superuser, group membership, plaintext legacy keys —
+# access management only, except its login pages) and the OpenAPI schema views (staff-only in the service).
+FRAMEWORK_RULES: tuple[RouteRule, ...] = (
+    RouteRule("django_contentdb", rf"{_CONTENTDB_V1}(?:<drf_format_suffix:format>)?$", "content.pages"),
+    RouteRule("django", "admin/(?:login|logout|jsi18n|password_change(?:/done)?)/$", STAFF_BASELINE),
+    RouteRule("django", "admin/", ACCESS_MANAGE),
+    RouteRule("drf_spectacular", "api/schema/", STAFF_BASELINE),
 )
+# Non-DRF routes owned by the Django admin site; its own views (marked by its get_urls, or its login page) authenticate
+# the caller themselves. Every other route proves it through its DRF authenticators and permissions, or does not.
+SELF_AUTH_ROUTES: tuple[str, ...] = ("admin/",)
