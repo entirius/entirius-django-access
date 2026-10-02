@@ -11,8 +11,9 @@ import pytest
 from django.db import connection
 from django.test import Client
 
+from django_access.models import AuditEntry
+from tests.helpers import bypass_rows
 from tests.security import urls
-from tests.security.conftest import bypass_rows
 from tests.security.contract import SAFE, WRITES
 
 pytestmark = [pytest.mark.django_db, pytest.mark.urls("tests.security.urls")]
@@ -66,7 +67,7 @@ def test_superuser_reads_are_not_recorded(client, superuser, path, method):
 
 
 def _reject_audit_insert(execute, sql, params, many, context):
-    if sql.startswith('INSERT INTO "django_access_auditentry"'):
+    if sql.startswith(f"INSERT INTO {connection.ops.quote_name(AuditEntry._meta.db_table)}"):
         raise RuntimeError("audit store down")
     return execute(sql, params, many, context)
 
@@ -77,4 +78,4 @@ def test_failed_audit_write_keeps_the_response_and_logs_an_error(client, superus
     assert (response.status_code, response.json()) == (200, {"ran": True})
     assert ran == [(urls.RW_READ, "POST")]
     errors = [record for record in caplog.records if record.levelno == logging.ERROR]
-    assert [record.getMessage().split(" [")[0] for record in errors] == ["Gate bypass audit failed"]
+    assert [record.getMessage().split(" [")[0] for record in errors] == ["Gate bypass audit failed"]  # it fired

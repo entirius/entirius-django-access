@@ -34,7 +34,7 @@ def test_grant_unique_per_role_and_holder(holder, make_user, role, group):
         Grant.objects.create(role=role("viewer"), **{holder: target})
 
 
-def test_role_permission_unique(db):
+def test_role_permission_unique():
     custom = Role.objects.create(key="custom", name="Custom")
     RolePermission.objects.create(role=custom, permission="faq.faq:read")
     with pytest.raises(IntegrityError), transaction.atomic():

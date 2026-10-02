@@ -16,7 +16,9 @@ from rest_framework.test import APIClient
 
 from django_access.models import ApiToken, Application, AuditEntry
 from django_access.openapi import add_api_key_security
-from tests.test_token_api import ENDPOINTS, URL, call
+from tests.helpers import TOKEN_API_URL as URL
+from tests.helpers import TOKEN_ENDPOINTS as ENDPOINTS
+from tests.helpers import call_token_api as call
 
 pytestmark = pytest.mark.django_db
 

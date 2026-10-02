@@ -47,7 +47,7 @@ def test_superuser_gets_every_area_at_its_top_level(person, api_as):
     assert body["manages_access"] is True and body["user"]["is_superuser"] is True and body["roles"] == []
 
 
-def test_identity_fields(person, api_as, make_user):
+def test_identity_fields(api_as, make_user):
     user = make_user(email="a@example.test", first_name="Ann", last_name="Lee")
     assert api_as(user).get(URL).json()["user"] == {
         "id": user.pk,

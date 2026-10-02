@@ -21,7 +21,7 @@ from django_access.models import AuditEntry
 from django_access.services import access_service, gate
 from django_access.services.permissions import VIEWER
 from tests import gate_urls as urls
-from tests.security.conftest import bearer
+from tests.helpers import STAFF_GET_QUERIES, bearer
 
 pytestmark = [pytest.mark.django_db, pytest.mark.urls("tests.gate_urls")]
 
@@ -214,10 +214,6 @@ def test_public_route_costs_no_query_and_no_authentication(client, django_assert
         response = client.get(urls.PUBLIC, HTTP_AUTHORIZATION="Bearer not.a.token")
     assert response.status_code == 200
     assert not hasattr(response.wsgi_request, "_access_principal")
-
-
-# Measured: the gate loads the JWT user (1), the view authenticates again (1); permissions come from the warm cache.
-STAFF_GET_QUERIES = 2
 
 
 def test_staff_get_with_a_warm_cache(client, viewer):

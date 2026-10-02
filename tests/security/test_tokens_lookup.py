@@ -87,10 +87,26 @@ def failures(issue, application, system, clock):
     }
 
 
-def test_every_failure_is_the_same_none_after_the_same_single_query(failures, key_request):
-    for kind, (raw, scope, channel_idx) in failures.items():
-        request = key_request(HTTP_X_API_KEY=raw)
-        answer, sqls = captured(request, scope, channel_idx)
-        assert answer is None, kind
-        assert len(sqls) == 1 and len(selects(sqls)) == 1, kind
-        assert not hasattr(request, "access_token"), kind
+FAILURE_KINDS = (
+    "unknown",
+    "expired",
+    "revoked",
+    "inactive application",
+    "wrong scope",
+    "empty scopes",
+    "channel mismatch",
+)
+
+
+def test_the_failure_kinds_are_all_built(failures):
+    assert set(failures) == set(FAILURE_KINDS)
+
+
+@pytest.mark.parametrize("kind", FAILURE_KINDS)
+def test_every_failure_is_the_same_none_after_the_same_single_query(kind, failures, key_request):
+    raw, scope, channel_idx = failures[kind]
+    request = key_request(HTTP_X_API_KEY=raw)
+    answer, sqls = captured(request, scope, channel_idx)
+    assert answer is None
+    assert len(sqls) == 1 and len(selects(sqls)) == 1
+    assert not hasattr(request, "access_token")

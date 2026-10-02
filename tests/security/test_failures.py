@@ -9,6 +9,7 @@ import logging
 import re
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.core.cache.backends.locmem import LocMemCache
 from django.db import DatabaseError, connection
 from django.test import override_settings
@@ -27,9 +28,10 @@ class FailUserQuery:
 
     def __init__(self, times: int) -> None:
         self.left = times
+        self.fragment = f"FROM {connection.ops.quote_name(get_user_model()._meta.db_table)}"
 
     def __call__(self, execute, sql, params, many, context):
-        if self.left and 'FROM "auth_user"' in sql:
+        if self.left and self.fragment in sql:
             self.left -= 1
             raise DatabaseError(FAILURE_TEXT)
         return execute(sql, params, many, context)

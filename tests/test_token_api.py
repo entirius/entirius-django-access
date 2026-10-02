@@ -3,7 +3,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Token API v2: applications and tokens over the admin API — auth matrix, CRUD, rotate overlap, revoke, catalogue."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from django.db.models import QuerySet
@@ -13,21 +13,13 @@ from django_access.catalogue import registry
 from django_access.exceptions import AccessConflict
 from django_access.models import ApiToken, Application, AuditAction, AuditEntry
 from django_access.services import tokens
+from tests.helpers import TOKEN_API_URL, TOKEN_ENDPOINTS, call_token_api
 
 pytestmark = pytest.mark.django_db
 
-URL = "/api/access/v2/admin/"
+URL = TOKEN_API_URL
 OK = {"get": 200, "post": 201, "patch": 200}
-ENDPOINTS = [
-    ("get", "applications/", None),
-    ("post", "applications/", {"name": "Widget"}),
-    ("get", "applications/{application}/", None),
-    ("patch", "applications/{application}/", {"description": "Shop"}),
-    ("get", "applications/{application}/tokens/", None),
-    ("post", "applications/{application}/tokens/", {"scopes": ["checkout.storefront"]}),
-    ("post", "tokens/{token}/rotate/", {}),
-    ("post", "tokens/{token}/revoke/", None),
-]
+ENDPOINTS = TOKEN_ENDPOINTS
 REFUSED = {"anonymous": 401, "customer": 403, "staff": 403, "viewer": 403, "manager": 403}
 
 
@@ -37,8 +29,7 @@ def ids(issue, application):
     return {"application": application.pk, "token": token.pk}
 
 
-def call(client, method: str, path: str, body: dict | None, ids: dict):
-    return getattr(client, method)(URL + path.format(**ids), body, format="json")
+call = call_token_api
 
 
 def expected(name: str, method: str, path: str) -> int:
@@ -169,8 +160,12 @@ def test_rotate_overlap_bounds(admin_api, issue, hours):
 
 def test_rotate_with_an_explicit_expiry(admin_api, issue):
     old, _ = issue()
-    response = admin_api.post(f"{URL}tokens/{old.pk}/rotate/", {"expires_at": in_days(30)}, format="json")
-    assert response.status_code == 201 and response.json()["expires_at"] is not None
+    submitted = in_days(30)
+    response = admin_api.post(f"{URL}tokens/{old.pk}/rotate/", {"expires_at": submitted}, format="json")
+    assert response.status_code == 201
+    expected = datetime.fromisoformat(submitted)
+    assert datetime.fromisoformat(response.json()["expires_at"]) == expected
+    assert ApiToken.objects.get(pk=response.json()["id"]).expires_at == expected
 
 
 def test_rotate_of_a_revoked_token_is_409(admin_api, issue, system):

@@ -94,6 +94,10 @@ def test_builtin_roles_are_409(admin_api, role, key, method, body):
     assert Role.objects.filter(key=key, builtin=True).exists()
 
 
+def refused_fields(response) -> list[str | None]:
+    return [detail["field"] for detail in response.json()["details"]]
+
+
 @pytest.mark.parametrize(
     "extra", [{"builtin": True}, {"id": 1}, {"created_by": 1}, {"created_at": "2026-01-01T00:00:00Z"}, {"owner": 1}]
 )
@@ -101,12 +105,13 @@ def test_create_refuses_forbidden_fields(admin_api, extra):
     before = state()
     response = admin_api.post(URL + "roles/", {"key": "mass", "name": "Mass", **extra}, format="json")
     assert response.status_code == 400 and state() == before
+    assert refused_fields(response) == list(extra)
 
 
 @pytest.mark.parametrize("extra", [{"builtin": True}, {"key": "renamed"}, {"id": 1}, {"created_by": 1}])
 def test_patch_refuses_forbidden_fields(admin_api, custom, extra):
     response = admin_api.patch(f"{URL}roles/{custom.pk}/", {"name": "New", **extra}, format="json")
-    assert response.status_code == 400
+    assert response.status_code == 400 and refused_fields(response) == list(extra)
     custom.refresh_from_db()
     assert (custom.key, custom.name, custom.builtin) == ("stock", "Stock", False)
 
@@ -120,7 +125,8 @@ def test_role_key_of_a_builtin_is_409(admin_api, key):
 
 @pytest.mark.parametrize("key", ["A", "1abc", "a", "a" * 51, "a b", "a/b"])
 def test_role_key_must_be_a_slug(admin_api, key):
-    assert admin_api.post(URL + "roles/", {"key": key, "name": "X"}, format="json").status_code == 400
+    response = admin_api.post(URL + "roles/", {"key": key, "name": "X"}, format="json")
+    assert response.status_code == 400 and refused_fields(response) == ["key"]
 
 
 @pytest.mark.parametrize(
@@ -128,16 +134,21 @@ def test_role_key_must_be_a_slug(admin_api, key):
     [{"name": "n" * 101}, {"description": "d" * 1001}, {"permissions": ["qms.stock:read"] * 99}],
 )
 def test_role_length_limits(admin_api, body):
-    assert admin_api.post(URL + "roles/", {"key": "limits", "name": "L", **body}, format="json").status_code == 400
+    response = admin_api.post(URL + "roles/", {"key": "limits", "name": "L", **body}, format="json")
+    assert response.status_code == 400 and refused_fields(response) == list(body)
 
 
-@pytest.mark.parametrize("holders", [{"user_id": 1, "group_id": 1}, {}])
-def test_grant_needs_exactly_one_holder(admin_api, holders):
+@pytest.mark.parametrize("both", [True, False])
+def test_grant_needs_exactly_one_holder(admin_api, make_user, group, both):
+    holders = {"user_id": make_user().pk, "group_id": group.pk} if both else {}
     before = Grant.objects.count()
-    assert admin_api.post(URL + "grants/", {"role": VIEWER, **holders}, format="json").status_code == 400
-    assert Grant.objects.count() == before
+    response = admin_api.post(URL + "grants/", {"role": VIEWER, **holders}, format="json")
+    assert response.status_code == 400 and Grant.objects.count() == before
+    [detail] = response.json()["details"]
+    assert "exactly one of user_id or group_id" in detail["description"]
 
 
 def test_grant_refuses_extra_fields(admin_api, make_user):
     body = {"role": VIEWER, "user_id": make_user().pk, "created_by": 1}
-    assert admin_api.post(URL + "grants/", body, format="json").status_code == 400
+    response = admin_api.post(URL + "grants/", body, format="json")
+    assert response.status_code == 400 and refused_fields(response) == ["created_by"]

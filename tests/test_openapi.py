@@ -10,6 +10,22 @@ from drf_spectacular.validation import validate_schema
 from django_access.openapi import add_api_key_security
 
 HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
+ADMIN = "/api/access/v2/admin/"
+OPERATIONS = {
+    *(("get", ADMIN + path) for path in ("audit/", "catalogue/", "groups/", "staff/", "staff/{user_id}/")),
+    *(
+        (method, ADMIN + path)
+        for path in ("applications/", "applications/{id}/tokens/", "grants/", "roles/")
+        for method in ("get", "post")
+    ),
+    ("get", ADMIN + "applications/{id}/"),
+    ("patch", ADMIN + "applications/{id}/"),
+    ("delete", ADMIN + "grants/{id}/"),
+    *((method, ADMIN + "roles/{id}/") for method in ("get", "patch", "delete")),
+    ("post", ADMIN + "tokens/{id}/revoke/"),
+    ("post", ADMIN + "tokens/{id}/rotate/"),
+    ("get", "/api/access/v2/me/"),
+}
 
 
 def test_openapi_schema_validates(tmp_path):
@@ -27,7 +43,7 @@ def test_openapi_schema_validates(tmp_path):
 def test_every_operation_has_a_response_schema():
     schema = SchemaGenerator(urlconf="django_access.urls").get_schema(request=None, public=True)
     operations = [(path, method, op) for path, item in schema["paths"].items() for method, op in item.items()]
-    assert len([op for _, method, op in operations if method in HTTP_METHODS]) == 22
+    assert {(method, path) for path, method, _ in operations if method in HTTP_METHODS} == OPERATIONS
     for path, method, operation in operations:
         success = {code: answer for code, answer in operation["responses"].items() if code.startswith("2")}
         assert success, f"{method} {path}"

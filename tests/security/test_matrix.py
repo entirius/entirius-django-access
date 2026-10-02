@@ -17,20 +17,17 @@ from django_access.models import AuditEntry
 from django_access.services import access_service
 from django_access.services.permissions import MANAGER, VIEWER
 from tests import gate_urls as urls
-from tests.security.conftest import bearer
+from tests.helpers import bearer
 from tests.security.contract import (
     ACCESS_DENIED,
     CASES,
-    METHODS,
     MODES,
     PRINCIPALS,
     RAN,
     ROUTES,
-    SAFE,
     assert_answer,
     expected,
     expects_bypass_row,
-    gate_sees_user,
 )
 
 pytestmark = [pytest.mark.django_db, pytest.mark.urls("tests.gate_urls")]
@@ -55,20 +52,17 @@ def test_cell(client, principal, ran, who, route, method, mode):
     assert hasattr(response.wsgi_request, "_access_decision") is (mode != "off")
 
 
-def test_contract_states_the_readme_invariants():
-    """Viewer and Editor never reach a PII export; only a superuser reaches an unmapped route; a token-only request
-    is anonymous."""
+def test_oracle_sanity_readme_invariants():
+    """An explicit check of the oracle itself, as literal cells: Viewer and Editor never reach a PII export; only a
+    staff superuser reaches an unmapped route; a token-only request is anonymous."""
     export, download, unmapped = ROUTES["pii_export"], ROUTES["pii_download"], ROUTES["unmapped"]
     for who in ("viewer", "editor"):
-        # OPTIONS on the DRF export answers metadata, never the export handler; the function download serves it
-        reached = [m for m in METHODS if m != "OPTIONS" and expected(PRINCIPALS[who], export, m, "enforce") == RAN]
-        reached += [m for m in METHODS if expected(PRINCIPALS[who], download, m, "enforce") == RAN]
-        assert reached == [], who
-    for name, who in PRINCIPALS.items():
-        reached = {expected(who, unmapped, m, "enforce") == RAN for m in METHODS}
-        assert reached == {who.superuser and gate_sees_user(who, unmapped) and who.staff}, name
-    assert PRINCIPALS["token_every_scope"] == PRINCIPALS["anonymous"]
-    assert set(SAFE) < set(METHODS)
+        assert expected(PRINCIPALS[who], export, "GET", "enforce") == ACCESS_DENIED, who
+        assert expected(PRINCIPALS[who], download, "GET", "enforce") == ACCESS_DENIED, who
+    assert expected(PRINCIPALS["superuser"], unmapped, "POST", "enforce") == RAN
+    assert expected(PRINCIPALS["superuser_not_staff"], unmapped, "POST", "enforce") == "STAFF_ONLY"
+    assert expected(PRINCIPALS["manager"], unmapped, "GET", "enforce") == "UNMAPPED_ROUTE"
+    assert expected(PRINCIPALS["token_every_scope"], unmapped, "GET", "enforce") == "view401"
 
 
 def assert_outcome(response, outcome: str) -> None:

@@ -12,8 +12,8 @@ import secrets
 import pytest
 from django.test import Client
 
+from tests.helpers import bearer, bypass_rows
 from tests.security import urls
-from tests.security.conftest import bearer, bypass_rows
 from tests.security.contract import GATE401, VIEW401, assert_answer
 
 pytestmark = [pytest.mark.django_db, pytest.mark.urls("tests.security.urls")]

@@ -50,6 +50,12 @@ def test_create_with_expiry_days(clock):
     assert token.expires_at == clock.now + timedelta(days=30)
 
 
+def test_create_refuses_a_secret_token_past_365_days():
+    with pytest.raises(CommandError, match="within 365 days"):
+        run("create", "--application", "ops", "--create-application", "--scope", "vault.api", "--expires-days", "366")
+    assert not ApiToken.objects.exists()
+
+
 def test_create_needs_an_existing_application_or_the_flag():
     with pytest.raises(CommandError, match="--create-application"):
         run("create", "--application", "shop", "--scope", "checkout.storefront")

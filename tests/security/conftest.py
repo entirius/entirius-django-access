@@ -8,26 +8,12 @@ from datetime import timedelta
 
 import pytest
 from django.utils import timezone
-from rest_framework_simplejwt.tokens import AccessToken
 
 from django_access.catalogue import registry
-from django_access.models import AuditAction, AuditEntry
 from django_access.services import access_service
 from django_access.services.permissions import ADMINISTRATOR, EDITOR, MANAGER, VIEWER
+from tests.helpers import bearer
 from tests.security import urls
-
-
-def bearer(user, **lifetime) -> dict:
-    token = AccessToken.for_user(user)
-    if lifetime:
-        token.set_exp(lifetime=timedelta(**lifetime))
-    return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
-
-
-def bypass_rows() -> list[dict]:
-    """The ``detail`` of every ``gate.bypass`` row, oldest first."""
-    rows = AuditEntry.objects.filter(action=AuditAction.GATE_BYPASS).order_by("pk")
-    return list(rows.values_list("detail", flat=True))
 
 
 @pytest.fixture(autouse=True)

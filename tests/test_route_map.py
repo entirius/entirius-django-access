@@ -183,6 +183,12 @@ def test_the_19_overrides():
         assert classify(route, views.download).method_levels == {method: level}, route
 
 
+def test_every_method_override_is_listed():
+    """A new entry in ``METHOD_OVERRIDES`` must join ``OVERRIDDEN`` (and the contract's count)."""
+    matched = {item for item in METHOD_OVERRIDES for route, _, _ in OVERRIDDEN if item.matches(route)}
+    assert matched == set(METHOD_OVERRIDES)
+
+
 @pytest.mark.parametrize(
     "route",
     [
