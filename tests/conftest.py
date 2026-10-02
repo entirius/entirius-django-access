@@ -10,12 +10,14 @@ from django.contrib.auth.models import Group
 from django.core.cache import cache
 from django.test import RequestFactory
 from django.utils import timezone
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from django_access.catalogue import registry
 from django_access.models import Application, Role
 from django_access.services import route_map, tokens
 from django_access.services.access_service import Actor
-from django_access.services.permissions import ADMINISTRATOR
+from django_access.services.permissions import ADMINISTRATOR, MANAGER, VIEWER
 
 _names = itertools.count()
 
@@ -32,8 +34,8 @@ def clean_state():
 @pytest.fixture
 def make_user(db):
     def make(**flags):
-        defaults = {"is_staff": True, "is_active": True}
-        return get_user_model().objects.create_user(username=f"user{next(_names)}", **{**defaults, **flags})
+        defaults = {"username": f"user{next(_names)}", "is_staff": True, "is_active": True}
+        return get_user_model().objects.create_user(**{**defaults, **flags})
 
     return make
 
@@ -98,3 +100,43 @@ def clock(monkeypatch):
     frozen = Clock()
     monkeypatch.setattr(timezone, "now", lambda: frozen.now)
     return frozen
+
+
+@pytest.fixture
+def person(make_user, role, system):
+    """``person(name)`` → a fresh user of that kind: customer, staff (no role), a built-in role holder, superuser."""
+    from django_access.services import access_service
+
+    def granted(role_key: str):
+        user = make_user()
+        access_service.grant_role(role(role_key), user=user, actor=system)
+        return user
+
+    builders = {
+        "customer": lambda: make_user(is_staff=False),
+        "staff": make_user,
+        "viewer": lambda: granted(VIEWER),
+        "manager": lambda: granted(MANAGER),
+        "administrator": lambda: granted(ADMINISTRATOR),
+        "superuser": lambda: make_user(is_superuser=True),
+    }
+    return lambda name: builders[name]()
+
+
+@pytest.fixture
+def api_as():
+    """``api_as(user)`` → an ``APIClient`` sending the user's Bearer JWT; ``api_as(None)`` → anonymous."""
+
+    def make(user=None) -> APIClient:
+        client = APIClient()
+        if user is not None:
+            client.credentials(HTTP_AUTHORIZATION=f"Bearer {AccessToken.for_user(user)}")
+        return client
+
+    return make
+
+
+@pytest.fixture
+def admin_api(person, api_as):
+    """An Administrator (not a superuser) — the access manager of the database."""
+    return api_as(person("administrator"))
