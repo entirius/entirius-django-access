@@ -5,7 +5,7 @@
 
 import dj_database_url
 
-SECRET_KEY = "not so secret test secret"  # noqa: S105 — test-only
+SECRET_KEY = "not so secret test secret, long enough for HS256"  # noqa: S105 — test-only
 DEBUG = True
 ALLOWED_HOSTS = ["*"]
 INSTALLED_APPS = [
@@ -19,11 +19,16 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "django_access",
 ]
+# The service's order (without corsheaders / allauth), the gate appended.
 MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "django_access.middleware.AccessGateMiddleware",
 ]
 ROOT_URLCONF = "tests.urls"
 TEMPLATES = [
