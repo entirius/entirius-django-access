@@ -84,7 +84,9 @@ def decide(request: HttpRequest, view_func: Callable) -> Decision:
         return ALLOW if info.self_auth else Decision(False, 401, NOT_AUTHENTICATED)
     if not user.is_active:  # whatever the view's authenticator settings, an inactive account is never let through
         return Decision(False, 401, NOT_AUTHENTICATED)
-    needed = route_map.required_permission(info, request.method)
+    # Django serves HEAD with the GET handler, so HEAD needs what GET needs (a GET PII export is a write).
+    method = "GET" if request.method == "HEAD" else request.method
+    needed = route_map.required_permission(info, method)
     if user.is_superuser:
         return Decision(True, needed=needed, bypass=bool(needed) and needed.endswith(f":{WRITE}"))
     if not user.is_staff:

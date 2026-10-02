@@ -65,6 +65,8 @@
 - `ACCESS_GATE_MODE` = `enforce` (default) | `observe` (log refusals on `django_access.gate`, let through) | `off`;
   any other value is enforced. System checks `django_access.E010` (invalid mode) and `W010` (not `enforce` with
   `DEBUG=False`).
+- The gate decides HEAD like GET (Django serves HEAD with the GET handler): a HEAD of a GET PII export needs the
+  export's write permission and leaves a superuser bypass row.
 - Requires Django 5.1+.
 
 ## 0.1.0 (unreleased)
