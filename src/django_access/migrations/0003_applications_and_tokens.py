@@ -11,7 +11,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("django_access", "0002_builtin_roles_and_staff_administrators"),
+        ("django_access", "0002_builtin_roles_and_staff_managers"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

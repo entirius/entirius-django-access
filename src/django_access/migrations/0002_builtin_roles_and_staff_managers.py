@@ -50,6 +50,8 @@ def grant_manager_to_staff(apps, schema_editor) -> None:
 
 
 class Migration(migrations.Migration):
+    # Renamed before the first release; a database that recorded the old name keeps it as applied.
+    replaces = [("django_access", "0002_builtin_roles_and_staff_administrators")]
     dependencies = [
         ("django_access", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
