@@ -15,7 +15,7 @@ from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.db import models, transaction
+from django.db import IntegrityError, models, transaction
 from django.db.models import Q
 
 from django_access.catalogue import registry
@@ -105,6 +105,16 @@ def _lockout_guard():
         raise AccessLockout("Nobody active would be left to manage access")
 
 
+@contextmanager
+def _unique(message: str):
+    """A concurrent duplicate passes the ``exists()`` check and hits the unique constraint: the same conflict."""
+    try:
+        with transaction.atomic():
+            yield
+    except IntegrityError:
+        raise AccessConflict(message) from None
+
+
 def _finish(action: str, actor: Actor, target: models.Model, detail: dict) -> None:
     record_audit(action, actor, target, detail)
     bump_version()
@@ -113,9 +123,11 @@ def _finish(action: str, actor: Actor, target: models.Model, detail: dict) -> No
 @transaction.atomic
 def create_role(data: RoleInput, actor: Actor) -> Role:
     permissions = _validated(data.permissions)
+    message = f"Role {data.key!r} already exists"
     if Role.objects.filter(key=data.key).exists():
-        raise AccessConflict(f"Role {data.key!r} already exists")
-    role = Role.objects.create(key=data.key, name=data.name, description=data.description)
+        raise AccessConflict(message)
+    with _unique(message):
+        role = Role.objects.create(key=data.key, name=data.name, description=data.description)
     _set_permissions(role, permissions)
     _finish(AuditAction.ROLE_CREATE, actor, role, {"key": role.key, "name": role.name, "permissions": permissions})
     return role
@@ -171,9 +183,11 @@ def grant_role(role: Role, *, user=None, group: Group | None = None, actor: Acto
         raise ValueError("Grant a role to exactly one of user or group")
     if user is not None and not (user.is_active and user.is_staff):
         raise ValueError("Grant target must be an active staff user")
+    message = f"Role {role.key!r} is already granted"
     if Grant.objects.filter(role=role, user=user, group=group).exists():
-        raise AccessConflict(f"Role {role.key!r} is already granted")
-    grant = Grant.objects.create(role=role, user=user, group=group, created_by=actor.user)
+        raise AccessConflict(message)
+    with _unique(message):
+        grant = Grant.objects.create(role=role, user=user, group=group, created_by=actor.user)
     _finish(AuditAction.GRANT_CREATE, actor, grant, _holder_detail(grant))
     return grant
 
