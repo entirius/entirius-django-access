@@ -22,7 +22,8 @@
   Administrator holder) raises `AccessLockout`. `access.manage` is built-in only: a custom role asking for
   `access.manage:read` or `:write` raises `ReservedPermission` (`ACCESS_MANAGE_RESERVED`); `registry.custom_role_areas()`
   lists the assignable areas. Grants go only to active staff users (or to a group).
-- Migration `0002`: the built-in roles, and Manager for every active non-superuser staff user on first adoption
+- Migration `0002_builtin_roles_and_staff_managers` (renamed from `…_staff_administrators`, which it `replaces`): the
+  built-in roles, and Manager for every active non-superuser staff user on first adoption
   (`grant.migrate` audit rows); access management stays with superusers until someone is granted Administrator.
 - `services.route_map`: `walk()` yields every route as `ResolverMatch.route`, `classify()` gives owner, admin flag,
   area and method overrides (no models imported), `required_permission()` the `<area>:<level>` a method needs,
@@ -58,8 +59,10 @@
   `services.gate.decide()`: acts only on the admin set (outside it one memoized `classify()`, no authentication,
   cache or query); the principal is what the view's own JWT/session authenticators would see (a session never counts
   on a JWT-only view; API-key headers are never read); anonymous callers reach only self-authenticating views, else
-  401 `NOT_AUTHENTICATED` + `WWW-Authenticate: Bearer realm="api"`; superuser passes, with one `gate.bypass` audit row
-  per write (GET PII exports included) written after the response with its status; non-staff → 403 `STAFF_ONLY`,
+  401 `NOT_AUTHENTICATED` + `WWW-Authenticate: Bearer realm="api"`; non-staff → 403 `STAFF_ONLY` (a superuser without
+  `is_staff` included); a staff superuser passes, with one `gate.bypass` audit row per write (GET PII exports
+  included, any unsafe method on a route without an area with `needed: null`) written after the response with its
+  status;
   admin route without an area → 403 `UNMAPPED_ROUTE`, missing permission or a write on a read-only area → 403
   `ACCESS_DENIED` (v2 envelope); an exception in the decision → the v2 500 envelope, view not run.
 - `ACCESS_GATE_MODE` = `enforce` (default) | `observe` (log refusals on `django_access.gate`, let through) | `off`;
@@ -73,7 +76,8 @@
   `staff/<user_id>/` (active staff only; anything else → 404), `groups/`, `audit/` (filters `action`, `actor`, `from`,
   `to`). JWT only, `IsStaffUser` + `HasAreaPermission` (`access.manage:read`/`:write`) on every admin view, Pydantic
   schemas with `extra="forbid"`; `GET api/access/v2/me/` for any authenticated user. Audit rows carry the client
-  address by `REST_FRAMEWORK["NUM_PROXIES"]` (unset → `REMOTE_ADDR`). A racing duplicate role or grant is a conflict,
+  address by DRF's throttle rule (`NUM_PROXIES` set → the `X-Forwarded-For` entry `min(NUM_PROXIES, entries)` from the
+  right; unset → `REMOTE_ADDR`). The staff baseline (`IsStaffUser`) is active staff only. A racing duplicate role or grant is a conflict,
   not an `IntegrityError`.
 - Token API v2 under `api/access/v2/admin/`: `applications/` + `applications/<id>/` (list, create, PATCH `name`,
   `description`, `is_active`; no DELETE; a name in use → 409), `applications/<id>/tokens/` (list, issue),
@@ -103,7 +107,7 @@
   `AGREEMENTS_API_KEY` for removal from the settings once its window is over.
 - Module docs: `docs/concept.md`, `install.md` (wiring, settings, deploy order, rollback, production hardening),
   `api.md`, `operations.md`, `testing.md`, `gotchas.md`, `erd-config.yaml`, `openapi.yaml`.
-- Requires Django 5.1+.
+- Requires Django 5.1+ and DRF 3.15.2+.
 - Area `pim.product_delete` (write only, flag `destructive`, 49 areas): `catalogue.defaults.AREA_OVERRIDES` make the
   PIM product `DELETE` (both roots) and the atlas/suppliers `realproducts/merge-by-ean/` need it instead of
   `pim.products` / `*.products`; `RouteInfo.method_areas`, `method_areas` in the route audit JSON. Administrator and

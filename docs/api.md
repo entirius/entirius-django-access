@@ -16,7 +16,7 @@ parse into a Pydantic schema (`schemas/requests.py`, `extra="forbid"`), call a s
 | Permission | `IsStaffUser` + `HasAreaPermission`: `access.manage:read` for GET, `access.manage:write` otherwise; `catalogue/` is staff baseline; `me/` any authenticated user |
 | Refusals | customer → 403 `STAFF_ONLY`; staff without the permission → 403 `ACCESS_DENIED`; no or bad JWT → 401 |
 | Paged lists | `?page=&page_size=` (default 20, max 100) → `{count, next, previous, results}` |
-| Audit IP | the client address by `REST_FRAMEWORK["NUM_PROXIES"]`; unset → `REMOTE_ADDR` |
+| Audit IP | DRF's throttle rule: `REST_FRAMEWORK["NUM_PROXIES"]` set → the `X-Forwarded-For` entry `min(NUM_PROXIES, entries)` from the right; unset, `0` or no header → `REMOTE_ADDR` |
 
 ## Me
 

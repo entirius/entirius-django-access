@@ -44,6 +44,11 @@ A legacy row added after the import with a new secret is imported by the next `m
 `access_import_legacy_keys`; `--check` shows it as `missing` until then. A row added later that reuses an imported
 secret on another channel or scope is `stale`: issue that caller its own token and delete the row.
 
+A secret shared by rows of two modules (say `django_checkout.APIKey` and `django_contact_forms.APIKey`) becomes
+**one** token under the application of the module whose id sorts first (`Legacy keys: django_checkout`); its
+`legacy_source` lists both modules' ids. Deactivating that application or revoking that token stops the other
+module's caller too — give each caller its own token first.
+
 ## The 90-day window
 
 Every imported key expires `ACCESS_LEGACY_KEY_TTL_DAYS` after its import, and a re-run never extends it. During the

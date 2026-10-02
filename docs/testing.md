@@ -6,8 +6,9 @@ description: Which test file covers what, the fake legacy modules, the security 
 ## Module suite
 
 `make test` — pytest + pytest-django, `tests/settings.py`: `DATABASE_URL` when set (CI, zeno), else sqlite in
-memory. The lockout race test needs two connections and runs only on PostgreSQL: run
-`make module-test MODULE=entirius-django-access` in zeno. Every test secret is generated in the test; no fixture
+memory. The lockout race test needs two connections: it runs whenever `DATABASE_URL` is set (CI, zeno
+`make module-test MODULE=entirius-django-access`) and fails there on anything but PostgreSQL; the local sqlite run
+skips it and names the skip (`-rs`). The guard's row lock is pinned on sqlite too. Every test secret is generated in the test; no fixture
 holds a real or shared key.
 
 **Fake legacy modules.** `tests/legacy_apps/` installs six apps under the real labels (`django_accounts`,
@@ -17,16 +18,19 @@ names and key fields — the real modules are not installed here. The `legacy_ro
 
 | File | Covers |
 |---|---|
-| `test_catalogue.py` / `test_registry.py` | areas, scopes, default rules, `AppConfig` overrides per label |
-| `test_checks.py` | `E001`–`E006`, `E010`, `W002`, `W010` |
+| `test_catalogue.py` / `test_registry.py` | areas, scopes, default rules, `AppConfig` overrides per label; checks `E001`–`E006` |
+| `test_checks.py` | `W002` (`E010`/`W010` are in `test_gate.py` and `security/test_modes.py`) |
 | `test_route_map.py` / `test_route_map_scoping.py` | classification, owner-scoped rules, `self_auth` per branch, Django admin rules, the route audit |
-| `test_permissions.py` / `test_access_service.py` / `test_migration_0002.py` | effective permissions and cache versions, every mutation with its audit row, lockout guard, reserved `access.manage`, grant targets, 0002 → Manager |
+| `test_permissions.py` / `test_access_service.py` / `test_migration_0002.py` | effective permissions and cache versions (every user flag, membership, cascaded grants), every mutation with its audit row, service field whitelists, lockout guard, reserved `access.manage`, grant targets, 0002 → Manager and its 0001 round trip |
 | `test_gate.py` | the gate decision table, modes, bypass audit |
 | `test_product_delete.py` | `pim.product_delete`: built-in roles, both PIM roots, the RealProduct merge, media/file/link deletes, `me`, the audit report |
 | `test_tokens.py` / `test_access_token_command.py` | issue, rotate, revoke, verify, expiry rules, the CLI |
 | `test_admin_api.py` / `test_me_api.py` / `test_token_api.py` | every endpoint: auth matrix, bodies, conflicts, whitelists |
 | `test_openapi.py` | `spectacular --validate --fail-on-warn`, the `ApiKeyAuth` hook |
 | `test_legacy.py` | every legacy source, idempotency without expiry extension, shared secrets, null-channel skip, the agreements setting, a failing source, dry run, the `post_migrate` receiver, the command |
+
+Shared helpers (`bearer`, `bypass_rows`, the token API endpoints, the measured query count) live in
+`tests/helpers.py` — test modules never import from a conftest or from each other.
 
 ## Security suite (`tests/security/`)
 

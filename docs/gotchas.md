@@ -9,8 +9,8 @@ where it is enforced.
 ## Contracts
 
 - **Never rename the package, the app label or the table prefix `django_access`**, and never edit a released
-  migration. `0002_builtin_roles_and_staff_administrators` keeps its name although it grants Manager — `0003`
-  depends on it by name.
+  migration. `0002_builtin_roles_and_staff_managers` was renamed before 0.1.0 and `replaces` the old
+  `0002_builtin_roles_and_staff_administrators`, so a development database that recorded the old name migrates on.
 - **`catalogue/` and `services/route_map.py` import no models at module import, and `services/__init__.py` stays
   empty.** The service's route audit imports the route map before the app is installed.
 - **Every mutation goes through `access_service` / `tokens`.** They write the audit row in the same transaction and
@@ -21,13 +21,17 @@ where it is enforced.
 - **Rules are owner-scoped.** A rule applies only to routes whose view lives in the rule's own module (top-level
   package = app label). An app whose label differs from its package never matches its own rules — the audit shows
   the routes as `UNMAPPED`.
+- **The Django admin site is owned by path, not by module.** Every non-DRF view under `admin/` belongs to owner
+  `django` (area `access.manage`; login, logout and password change are the staff baseline), a module's own
+  `ModelAdmin` view included (`django_reviews.admin` → `django`) — the safe direction: a module rule never opens its
+  admin pages to staff.
 - **`self_auth` is strict.** Only a DRF view on exactly `JWTAuthentication` / `SessionAuthentication` with a
   permission that requires a user, or a view the Django admin site marks itself, lets anonymous callers through to
   its own 401. A view on DRF's default Session + Basic gets the gate's 401.
 - **The route map is memoized per process.** URLs added at run time (tests patching the urlconf) need
   `route_map.reset()`.
-- **A superuser without `is_staff` is refused** (`STAFF_ONLY`) although `effective_permissions` gives them
-  everything.
+- **A superuser without `is_staff` is refused** — 403 `STAFF_ONLY` by the gate, 403 by `IsStaffUser` with the gate
+  off — although `effective_permissions` gives them everything.
 
 ## Tokens
 

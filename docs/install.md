@@ -69,8 +69,10 @@ module. Tokens and `verify_api_key` are not affected by the mode.
 
 ## Production hardening
 
-- **Shared cache.** LocMem or Dummy as the default cache with `DEBUG=False` raises `django_access.W002`: a revoked
-  grant would keep working in other processes until the cache timeout.
+- **Shared cache — a hard requirement in production.** Permissions are cached per process-local version key, so with
+  LocMem a revoke or role change reaches only the process that made it; a revoked grant keeps working in the other
+  workers until the cache timeout. LocMem or Dummy as the default cache with `DEBUG=False` raises
+  `django_access.W002` — treat it as a deploy blocker.
 - **Proxy depth.** Audit IPs and every per-IP throttle use DRF's `NUM_PROXIES`. On Volkanos set the service setting
   `DRF_NUM_PROXIES` to the real proxy depth — `1` behind Cloudflare → Caddy → nginx; other hosts set
   `REST_FRAMEWORK["NUM_PROXIES"]`. Unset, the client address is `REMOTE_ADDR`, and a client-chosen

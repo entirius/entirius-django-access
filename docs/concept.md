@@ -61,8 +61,8 @@ package), area and method; rules apply only to their own module's routes.
 |---|---|
 | anonymous or invalid credentials, view authenticates itself (`self_auth`) | passes — the view's own 401 drives the CMS token refresh |
 | anonymous, any other admin view | 401 `NOT_AUTHENTICATED` + `WWW-Authenticate: Bearer realm="api"` |
-| superuser | passes; a write leaves one `gate.bypass` audit row after the response |
-| authenticated non-staff | 403 `STAFF_ONLY` |
+| authenticated non-staff, a superuser without `is_staff` included | 403 `STAFF_ONLY` |
+| staff superuser | passes; a write (any unsafe method on a route without an area too) leaves one `gate.bypass` audit row after the response |
 | staff, admin route without an area | 403 `UNMAPPED_ROUTE` + error log |
 | staff without the permission, or a write on a read-only area | 403 `ACCESS_DENIED` |
 | staff with the permission | passes |
@@ -109,7 +109,8 @@ tokens **with the same secret**, so every caller keeps working the day a module 
 | `settings.AGREEMENTS_API_KEY` | `agreements.subscribe` | — |
 
 Rules: one application per module (`Legacy keys: <app_label>`); `legacy=True`, `legacy_source` =
-`<app>.<Model>#<pk>`; expiry = import time + `ACCESS_LEGACY_KEY_TTL_DAYS` (90), never extended by a re-run. A row
+`<app>.<Model>#<pk>` (comma-separated for a shared secret; past 255 characters the leading whole ids and `+N more`);
+a secret shared by two modules is one token under the first module's application (`operations.md`); expiry = import time + `ACCESS_LEGACY_KEY_TTL_DAYS` (90), never extended by a re-run. A row
 without a channel authenticates nothing today, so it is skipped. A secret on several channels (or in a channel source
 and a channel-less one) becomes one unpinned token, valid on every channel — reported `unpinned`. A secret found in a publishable and a secret source is **not imported** (`mixed`) — a key that ships to
 browsers never gets erase, returns, reviews or vault power. A secret under 32 characters shows no character

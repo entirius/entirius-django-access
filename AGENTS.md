@@ -66,7 +66,7 @@ the module's own auth → `verify_api_key(request, scope, channel_idx)` → one 
 ## Testing
 
 - `make test` (sqlite) and, in zeno, `make module-test MODULE=entirius-django-access` (PostgreSQL — the lockout
-  race runs only there).
+  race runs wherever `DATABASE_URL` is set and fails off Postgres; sqlite skips it).
 - `tests/legacy_apps/` installs fake key modules under the real app labels; `tests/security/` is the security
   suite.
 - `docs/openapi.yaml` is generated from `django_access.urls` (`docs/testing.md`) — regenerate it with the API.
