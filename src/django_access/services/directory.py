@@ -34,7 +34,8 @@ class AuditFilter:
 
 
 def catalogue() -> dict:
-    """Areas grouped by module (``assignable`` false for ``access.manage``) and the built-in roles' permissions."""
+    """Areas grouped by module (``assignable`` false for ``access.manage``), the built-in roles' permissions and the
+    token scopes."""
     assignable = {item.key for item in registry.custom_role_areas()}
     by_module: dict[str, list[dict]] = {}
     for item in registry.areas():
@@ -44,11 +45,21 @@ def catalogue() -> dict:
         {"key": key, "name": name, "description": text, "permissions": permissions.builtin_permissions(key)}
         for key, (name, text) in permissions.BUILTIN_ROLES.items()
     ]
-    return {"modules": modules, "roles": roles}
+    return {"modules": modules, "roles": roles, "scopes": [_scope(scope) for scope in registry.scopes()]}
 
 
 def _area(item) -> dict:
     return {"key": item.key, "label": item.label, "levels": list(item.levels), "sensitive": list(item.sensitive)}
+
+
+def _scope(scope) -> dict:
+    return {
+        "key": scope.key,
+        "label": scope.label,
+        "module": scope.module,
+        "publishable": scope.publishable,
+        "routes": list(scope.routes),
+    }
 
 
 def roles() -> QuerySet[Role]:

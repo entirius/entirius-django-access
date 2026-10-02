@@ -15,6 +15,7 @@ class AuditAction:
     GRANT_DELETE = "grant.delete"
     GRANT_MIGRATE = "grant.migrate"
     APPLICATION_CREATE = "application.create"
+    APPLICATION_UPDATE = "application.update"
     TOKEN_CREATE = "token.create"  # noqa: S105 — an audit action name
     TOKEN_ROTATE = "token.rotate"  # noqa: S105 — an audit action name
     TOKEN_REVOKE = "token.revoke"  # noqa: S105 — an audit action name

@@ -12,6 +12,7 @@ failure. Neither the raw value nor ``key_hash`` is ever logged or written to an 
 import hashlib
 import secrets
 from datetime import datetime, timedelta
+from typing import Any
 
 from django.conf import settings
 from django.db import transaction
@@ -21,12 +22,13 @@ from django.utils import timezone
 from django_access.catalogue import registry
 from django_access.exceptions import AccessConflict, TokenExpiryError
 from django_access.models import ApiToken, Application, AuditAction
-from django_access.services.access_service import Actor, record_audit
+from django_access.services.access_service import Actor, record_audit, unique_or_conflict
 
 TOKEN_PREFIX = "ent_api_"  # noqa: S105 — the public marker of every raw value
 MAX_PRESENTED_LENGTH = 256
 KEY_HEADERS = ("HTTP_X_API_KEY", "HTTP_X_API_ADMIN_KEY")
 ACTIVE, REVOKED, EXPIRED, INACTIVE = "active", "revoked", "expired", "application inactive"
+_EDITABLE_APPLICATION_FIELDS = frozenset({"name", "description", "is_active"})
 
 
 def hash_key(raw: str) -> str:
@@ -96,10 +98,30 @@ def _create(actor: Actor, **fields) -> tuple[ApiToken, str]:
 
 @transaction.atomic
 def create_application(name: str, *, description: str = "", actor: Actor) -> Application:
+    message = f"Application {name!r} already exists"
     if Application.objects.filter(name=name).exists():
-        raise AccessConflict(f"Application {name!r} already exists")
-    application = Application.objects.create(name=name, description=description, created_by=actor.user)
+        raise AccessConflict(message)
+    with unique_or_conflict(message):
+        application = Application.objects.create(name=name, description=description, created_by=actor.user)
     record_audit(AuditAction.APPLICATION_CREATE, actor, application, {"name": name})
+    return application
+
+
+@transaction.atomic
+def update_application(application: Application, updates: dict[str, Any], *, actor: Actor) -> Application:
+    """Change ``name``, ``description`` or ``is_active`` (deactivating stops every token of the application)."""
+    if invalid := set(updates) - _EDITABLE_APPLICATION_FIELDS:
+        raise ValueError(f"Fields not editable via update_application: {sorted(invalid)}")
+    message = f"Application {updates.get('name', application.name)!r} already exists"
+    if Application.objects.filter(name=updates.get("name")).exclude(pk=application.pk).exists():
+        raise AccessConflict(message)
+    changes = {key: {"from": getattr(application, key), "to": value} for key, value in updates.items()}
+    for key, value in updates.items():
+        setattr(application, key, value)
+    with unique_or_conflict(message):
+        application.save()
+    changed = {key: change for key, change in changes.items() if change["from"] != change["to"]}
+    record_audit(AuditAction.APPLICATION_UPDATE, actor, application, {"name": application.name, "changes": changed})
     return application
 
 
@@ -176,12 +198,18 @@ def revoke_token(token: ApiToken, *, actor: Actor) -> ApiToken:
     return token
 
 
-def token_state(token: ApiToken, now: datetime) -> str:
+def lifecycle_state(token: ApiToken, now: datetime) -> str:
+    """``revoked``, ``expired`` or ``active`` — the token's own state, whatever its application."""
     if token.revoked_at:
         return REVOKED
     if token.expires_at and token.expires_at <= now:
         return EXPIRED
-    return ACTIVE if token.application.is_active else INACTIVE
+    return ACTIVE
+
+
+def token_state(token: ApiToken, now: datetime) -> str:
+    state = lifecycle_state(token, now)
+    return INACTIVE if state == ACTIVE and not token.application.is_active else state
 
 
 def _allows(token: ApiToken, scope: str, channel_idx: str | None) -> bool:

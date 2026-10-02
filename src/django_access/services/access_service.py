@@ -106,7 +106,7 @@ def _lockout_guard():
 
 
 @contextmanager
-def _unique(message: str):
+def unique_or_conflict(message: str):
     """A concurrent duplicate passes the ``exists()`` check and hits the unique constraint: the same conflict."""
     try:
         with transaction.atomic():
@@ -126,7 +126,7 @@ def create_role(data: RoleInput, actor: Actor) -> Role:
     message = f"Role {data.key!r} already exists"
     if Role.objects.filter(key=data.key).exists():
         raise AccessConflict(message)
-    with _unique(message):
+    with unique_or_conflict(message):
         role = Role.objects.create(key=data.key, name=data.name, description=data.description)
     _set_permissions(role, permissions)
     _finish(AuditAction.ROLE_CREATE, actor, role, {"key": role.key, "name": role.name, "permissions": permissions})
@@ -186,7 +186,7 @@ def grant_role(role: Role, *, user=None, group: Group | None = None, actor: Acto
     message = f"Role {role.key!r} is already granted"
     if Grant.objects.filter(role=role, user=user, group=group).exists():
         raise AccessConflict(message)
-    with _unique(message):
+    with unique_or_conflict(message):
         grant = Grant.objects.create(role=role, user=user, group=group, created_by=actor.user)
     _finish(AuditAction.GRANT_CREATE, actor, grant, _holder_detail(grant))
     return grant
