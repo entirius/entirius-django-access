@@ -1,7 +1,8 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""System checks (tag ``entirius_config``): a broken access catalogue is caught at boot; a per-process cache warns.
+"""System checks (tag ``entirius_config``): a broken access catalogue or gate mode is caught at boot; a per-process
+cache and a gate that does not enforce in production warn.
 
 An area whose module is not installed is not an error — the default catalogue covers modules a deployment may not run.
 """
@@ -15,6 +16,7 @@ from django.core import checks
 from django_access.catalogue import registry
 from django_access.catalogue.areas import AREA_KEY_RE, LEVEL_SETS, SENSITIVE_FLAGS, STAFF_BASELINE, Area
 from django_access.catalogue.defaults import RouteRule
+from django_access.services.gate import ENFORCE, MODE_SETTING, MODES
 
 PROCESS_LOCAL_CACHES = frozenset(
     {"django.core.cache.backends.locmem.LocMemCache", "django.core.cache.backends.dummy.DummyCache"}
@@ -79,3 +81,19 @@ def permission_cache_is_shared(app_configs=None, **kwargs) -> list[checks.CheckM
             id="django_access.W002",
         )
     ]
+
+
+@checks.register("entirius_config")
+def gate_mode_is_valid(app_configs=None, **kwargs) -> list[checks.CheckMessage]:
+    """An unknown ``ACCESS_GATE_MODE`` is enforced (and an error); ``observe``/``off`` without ``DEBUG`` warn."""
+    value = getattr(settings, MODE_SETTING, ENFORCE)
+    if value not in MODES:
+        return [
+            checks.Error(
+                f"{MODE_SETTING} {value!r} is not one of {', '.join(MODES)}: the gate enforces",
+                id="django_access.E010",
+            )
+        ]
+    if value != ENFORCE and not settings.DEBUG:
+        return [checks.Warning(f"{MODE_SETTING} is {value!r}: the admin gate does not refuse", id="django_access.W010")]
+    return []
