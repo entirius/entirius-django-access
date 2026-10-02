@@ -17,7 +17,7 @@ from django_access.catalogue import registry
 from django_access.models import Application, Role
 from django_access.services import route_map, tokens
 from django_access.services.access_service import Actor
-from django_access.services.permissions import ADMINISTRATOR, MANAGER, VIEWER
+from django_access.services.permissions import ADMINISTRATOR, EDITOR, MANAGER, VIEWER
 
 _names = itertools.count()
 
@@ -116,6 +116,7 @@ def person(make_user, role, system):
         "customer": lambda: make_user(is_staff=False),
         "staff": make_user,
         "viewer": lambda: granted(VIEWER),
+        "editor": lambda: granted(EDITOR),
         "manager": lambda: granted(MANAGER),
         "administrator": lambda: granted(ADMINISTRATOR),
         "superuser": lambda: make_user(is_superuser=True),
