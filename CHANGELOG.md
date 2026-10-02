@@ -18,17 +18,29 @@
   `manages_access(user)`; cached per user under a version bumped by every access change, group membership and
   `is_staff` / `is_superuser` / `is_active` changes.
 - `services.access_service`: `create_role`, `update_role`, `delete_role`, `grant_role`, `revoke_grant` — each in one
-  transaction with its audit row; a change that removes the last access manager raises `AccessLockout`.
-- Migration `0002`: the built-in roles, and Administrator for every active staff user on first adoption
-  (`grant.migrate` audit rows).
+  transaction with its audit row; a change that removes the last access manager (active staff superuser or
+  Administrator holder) raises `AccessLockout`. `access.manage` is built-in only: a custom role asking for
+  `access.manage:read` or `:write` raises `ReservedPermission` (`ACCESS_MANAGE_RESERVED`); `registry.custom_role_areas()`
+  lists the assignable areas. Grants go only to active staff users (or to a group).
+- Migration `0002`: the built-in roles, and Manager for every active non-superuser staff user on first adoption
+  (`grant.migrate` audit rows); access management stays with superusers until someone is granted Administrator.
 - `services.route_map`: `walk()` yields every route as `ResolverMatch.route`, `classify()` gives owner, admin flag,
   area and method overrides (no models imported), `required_permission()` the `<area>:<level>` a method needs,
   `audit_routes()` the per-module route audit (JSON report on request). Admin set = `admin/` segment or `api-admin/`
   path ∪ an `IsAdminUser`/`IsSuperUser` permission class (DRF `&`/`|` composites walked) ∪ the munin health, returns
-  download and pim viewer exceptions; the Django admin site and the X-API-ADMIN-KEY erase routes are not admin.
+  download and pim viewer exceptions; the X-API-ADMIN-KEY erase routes are not admin. Route rules are owner-scoped
+  (a rule applies only to its own module's routes); framework routes match `FRAMEWORK_RULES` only — the Django admin
+  site is `access.manage` (login, logout, jsi18n and password change on the staff baseline), the contentdb router root
+  `content.pages`, the OpenAPI views the staff baseline. `RouteInfo.self_auth` / `auth`: whether the view answers an
+  anonymous caller itself (a DRF view on exactly SimpleJWT `JWTAuthentication` / DRF `SessionAuthentication` with a
+  permission requiring a user, no `get_authenticators`/`get_permissions`/`check_permissions` override; or a view the
+  Django admin site marks itself); classes from `as_view` initkwargs first. The JSON report
+  adds `foreign_rule_matches` (the audit fails on any), `admin_not_self_auth` and `non_admin` with an audience.
 - `catalogue.defaults.METHOD_OVERRIDES`: 10 POST-reads → read, leads GDPR export and 6 GET PII exports/downloads →
   write, contentdb GET `…/published/` → `content.publish:write`. `returns.attachments` is write-only.
 - `manage.py access_routes [--check] [--json PATH]`.
+- System check `django_access.W002`: a `LocMemCache`/`DummyCache` default cache with `DEBUG=False` (permission
+  changes reach other processes only after the cache timeout).
 - Application tokens: models `Application` and `ApiToken` (migration `0003`). Raw value `ent_api_` +
   `secrets.token_urlsafe(32)`, shown once; stored as SHA-256 `key_hash` (unique index), `prefix` (12) and `last_four`.
 - `services.tokens`: `issue_token`, `rotate_token` (successor + overlap window), `revoke_token`, `create_application`
