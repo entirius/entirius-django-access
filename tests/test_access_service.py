@@ -5,8 +5,8 @@ import pytest
 
 from django_access.catalogue import registry
 from django_access.exceptions import AccessConflict, AccessLockout, ReservedPermission
-from django_access.models import AuditEntry, Grant, Role
-from django_access.services import access_service
+from django_access.models import Application, AuditEntry, Grant, Role
+from django_access.services import access_service, tokens
 from django_access.services.access_service import Actor, RoleInput
 
 pytestmark = pytest.mark.django_db
@@ -46,10 +46,24 @@ def test_builtin_roles_are_locked(role, system):
         access_service.delete_role(role("viewer"), system)
 
 
-def test_update_role_whitelists_fields(admin_grant, system):
+@pytest.mark.parametrize("updates", [{"key": "renamed"}, {"builtin": True}, {"name": "Ok", "key": "renamed"}])
+def test_update_role_whitelists_fields(updates, admin_grant, system):
     custom = access_service.create_role(RoleInput("faq", "FAQ"), system)
-    with pytest.raises(ValueError):
-        access_service.update_role(custom, {"builtin": True}, system)
+    rows = AuditEntry.objects.count()
+    with pytest.raises(ValueError, match="not editable via update_role"):
+        access_service.update_role(custom, updates, system)
+    stored = Role.objects.get(pk=custom.pk)
+    assert (stored.key, stored.name, stored.builtin) == ("faq", "FAQ", False)
+    assert AuditEntry.objects.count() == rows
+
+
+@pytest.mark.parametrize("updates", [{"created_by": None}, {"id": 99}, {"name": "Ok", "created_at": None}])
+def test_update_application_whitelists_fields(updates, application, system):
+    rows = AuditEntry.objects.count()
+    with pytest.raises(ValueError, match="not editable via update_application"):
+        tokens.update_application(application, updates, actor=system)
+    assert Application.objects.get().name == application.name == "storefront"
+    assert AuditEntry.objects.count() == rows
 
 
 def test_duplicates_conflict(admin_grant, system):

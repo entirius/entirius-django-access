@@ -24,7 +24,11 @@ def _flags_changed(instance) -> bool:
 
 
 def _user_saving(sender, instance, update_fields=None, **kwargs) -> None:
+    """One SELECT per save of a staff user or superuser; none for anyone else (customer registration, profiles). A
+    demotion needs no bump: ``effective_permissions`` reads the flags first, and the promotion back bumps."""
     if update_fields is not None and not set(update_fields) & set(ACCESS_FLAGS):
+        return
+    if not (instance.is_staff or instance.is_superuser):
         return
     if instance.pk is not None and _flags_changed(instance):
         bump_version()

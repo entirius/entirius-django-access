@@ -14,6 +14,7 @@ from django_access.services.permissions import (
     effective_permissions,
     has_permission,
 )
+from django_access.signals import ACCESS_FLAGS
 
 pytestmark = pytest.mark.django_db
 
@@ -107,13 +108,49 @@ def test_cache_bumps_on_group_membership(make_user, role, group, system, django_
     assert effective_permissions(user) == {}
 
 
-def test_cache_bumps_on_staff_flag(make_user, django_capture_on_commit_callbacks):
-    user = make_user(is_staff=False)
+@pytest.mark.parametrize("partial", [False, True])
+@pytest.mark.parametrize(
+    ("flag", "start", "end"),
+    [("is_staff", {"is_staff": False}, True), ("is_superuser", {}, True), ("is_active", {}, False)],
+)
+def test_cache_bumps_on_each_access_flag(flag, start, end, partial, make_user, django_capture_on_commit_callbacks):
+    assert flag in ACCESS_FLAGS
+    user = make_user(**start)
     before = cache.get_or_set(VERSION_KEY, "initial", timeout=None)
     with django_capture_on_commit_callbacks(execute=True):
-        user.is_staff = True
-        user.save()
+        setattr(user, flag, end)
+        user.save(update_fields=[flag]) if partial else user.save()
     assert cache.get(VERSION_KEY) != before
+
+
+def test_cache_bumps_on_groups_clear(make_user, role, group, system, django_capture_on_commit_callbacks):
+    user = make_user()
+    with django_capture_on_commit_callbacks(execute=True):
+        access_service.grant_role(role("viewer"), group=group, actor=system)
+        user.groups.add(group)
+    assert effective_permissions(user)["faq.faq"] == "read"
+    with django_capture_on_commit_callbacks(execute=True):
+        user.groups.clear()
+    assert effective_permissions(user) == {}
+
+
+def test_cascaded_grant_delete_bumps(make_user, role, group, system, django_capture_on_commit_callbacks):
+    """A group deleted outside ``access_service``: its grants cascade and the members lose the role at once."""
+    user = make_user()
+    with django_capture_on_commit_callbacks(execute=True):
+        access_service.grant_role(role("viewer"), group=group, actor=system)
+        user.groups.add(group)
+    assert effective_permissions(user)["faq.faq"] == "read"
+    with django_capture_on_commit_callbacks(execute=True):
+        group.delete()
+    assert effective_permissions(user) == {}
+
+
+def test_customer_save_runs_no_flag_query(make_user, django_assert_num_queries):
+    customer = make_user(is_staff=False)
+    customer.first_name = "Ada"
+    with django_assert_num_queries(1):  # the UPDATE alone
+        customer.save()
 
 
 def test_cached_answer_survives_until_commit(make_user, role, system, django_capture_on_commit_callbacks):
