@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 
 from django.apps import apps
 from django.conf import settings
-from django.db import models, transaction
+from django.db import DEFAULT_DB_ALIAS, connections, models, transaction
 from django.utils import timezone
 
 from django_access.models import ApiToken, Application, AuditAction, AuditEntry
@@ -34,6 +34,7 @@ AGREEMENTS_SCOPE = "agreements.subscribe"
 SHORT_SECRET_LENGTH = 32
 SHORT_PREFIX = "legacy"
 LEGACY_PREFIX_LENGTH = 6
+LEGACY_SOURCE_LENGTH = ApiToken._meta.get_field("legacy_source").max_length
 CONTACT_FORM_SCOPES = {"contact_form": "contact_forms.submit", "booking": "contact_forms.booking"}
 DELETED, REFUSED, NOT_IMPORTED = "deleted", "refused", "not_imported"
 
@@ -208,6 +209,19 @@ def _refs(group: list[LegacyKey]) -> list[str]:
     return [key.ref for key in group]
 
 
+def _legacy_source(refs: list[str]) -> str:
+    """Every id when they fit the column; else the leading whole ids and ``+N more`` — never an id cut in half."""
+    if len(joined := ",".join(refs)) <= LEGACY_SOURCE_LENGTH:
+        return joined
+    budget = LEGACY_SOURCE_LENGTH - len(f",+{len(refs)} more")
+    kept: list[str] = []
+    for ref in refs:
+        if len(",".join([*kept, ref])) > budget:
+            break
+        kept.append(ref)
+    return ",".join([*kept, f"+{len(refs) - len(kept)} more"])
+
+
 def _create_token(group: list[LegacyKey], scopes: list[str], now: datetime) -> None:
     value, channels = group[0].value, {key.channel_idx for key in group}
     short = len(value) < SHORT_SECRET_LENGTH
@@ -222,7 +236,7 @@ def _create_token(group: list[LegacyKey], scopes: list[str], now: datetime) -> N
         channel_idx=next(iter(channels)) if len(channels) == 1 else None,
         expires_at=now + _ttl(),
         legacy=True,
-        legacy_source=",".join(_refs(group))[:255],
+        legacy_source=_legacy_source(_refs(group)),
     )
 
 
@@ -285,8 +299,15 @@ def import_legacy_keys(*, dry_run: bool = False, now: datetime | None = None) ->
     return run.report
 
 
-def import_after_migrate(sender, **kwargs) -> None:
+def _tokens_ready(using: str) -> bool:
+    """The default database with the token table: ``migrate --database=<other>`` or a partial migrate imports nothing."""
+    return using == DEFAULT_DB_ALIAS and ApiToken._meta.db_table in connections[using].introspection.table_names()
+
+
+def import_after_migrate(sender, using: str = DEFAULT_DB_ALIAS, **kwargs) -> None:
     """``post_migrate`` receiver: import and log the report; never fails ``migrate``."""
+    if not _tokens_ready(using):
+        return
     try:
         report = import_legacy_keys()
     except Exception as exc:

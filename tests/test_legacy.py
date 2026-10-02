@@ -1,11 +1,13 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
+import secrets
 from datetime import timedelta
 from io import StringIO
 
 import pytest
 from django.core.management import call_command
+from django.db import connection
 from django.utils import timezone
 
 from django_access.models import ApiToken, AuditAction, AuditEntry
@@ -159,18 +161,40 @@ def test_one_audit_row_per_run_that_imported(legacy_row):
     assert entry.detail == {"django_vault.APIKey": {"imported": [f"django_vault.APIKey#{row.pk}"]}}
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
 def test_migrate_imports_the_legacy_keys(legacy_row):
     row = legacy_row("django_reviews.APIKey")
     call_command("migrate", verbosity=0)
     assert token_of(row.key).scopes == ["reviews.moderate"]
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
 def test_migrate_never_fails_because_of_the_import(legacy_row, monkeypatch, caplog):
     monkeypatch.setattr(legacy, "import_legacy_keys", lambda: 1 / 0)
     call_command("migrate", verbosity=0)
     assert "Legacy key import failed (ZeroDivisionError)" in caplog.text
+
+
+def test_post_migrate_on_another_database_imports_nothing(legacy_row):
+    legacy_row("django_reviews.APIKey")
+    legacy.import_after_migrate(sender=None, using="other")
+    assert not ApiToken.objects.exists()
+
+
+def test_post_migrate_without_the_token_table_imports_nothing(legacy_row, monkeypatch):
+    legacy_row("django_reviews.APIKey")
+    monkeypatch.setattr(connection.introspection, "table_names", lambda *args, **kwargs: [])
+    legacy.import_after_migrate(sender=None, using="default")
+    assert not ApiToken.objects.exists()
+
+
+def test_a_secret_shared_by_many_rows_keeps_whole_ids(legacy_row):
+    shared = secrets.token_hex(32)
+    rows = [legacy_row("django_reviews.APIKey", key=shared) for _ in range(20)]
+    legacy.import_legacy_keys()
+    *kept, more = token_of(shared).legacy_source.split(",")
+    refs = sorted(f"django_reviews.APIKey#{row.pk}" for row in rows)
+    assert kept == refs[: len(kept)] and more == f"+{len(refs) - len(kept)} more"
 
 
 def test_command_prints_counts_and_with_report_the_ids(legacy_row):
