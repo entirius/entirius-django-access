@@ -1,14 +1,17 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""Legacy keys (D6): import the eight per-module key sources as hashed tokens, later purge their plaintext rows.
+"""Legacy keys (D6, D28): import the eight per-module key sources as hashed tokens, report their use, purge their
+plaintext rows on demand.
 
-Import keeps each secret: the token's ``key_hash`` is the SHA-256 of the legacy value, so every caller keeps working
-for ``ACCESS_LEGACY_KEY_TTL_DAYS`` (90) after the import. Idempotent by ``key_hash`` — an existing token is never
-changed, so a re-run never extends an expiry or revives an expired token. A secret found in a publishable and a
-secret source is not imported (``mixed``); a secret shorter than 32 characters shows no character (``short``).
+Import keeps each secret: the token's ``key_hash`` is the SHA-256 of the legacy value, so every caller keeps working.
+A legacy token never expires by itself (D28) — a team sets or clears an expiry per token (``tokens.set_token_expiry``),
+revokes or rotates it. Idempotent by ``key_hash`` — an existing token is never changed, so a re-run never revives an
+expired or revoked token. A secret found in a publishable and a secret source is not imported (``mixed``); a secret
+shorter than 32 characters shows no character (``short``).
 
-Purge deletes the module rows whose token's window is over (or that was revoked), one ``legacy.purge`` audit row per
+Purge deletes the module rows of imported keys, no time gate; a row whose token was used within ``recent_days`` is
+refused unless ``force`` (that row is the only way back if access is ever removed). One ``legacy.purge`` audit row per
 run that deleted something. Neither the value nor its hash is ever logged, reported or audited — only counts and
 ``legacy_source`` ids (``<app>.<Model>#<pk>``). A failing source is logged by exception class, never ``str(exc)``.
 """
@@ -25,7 +28,7 @@ from django.utils import timezone
 
 from django_access.models import ApiToken, Application, AuditAction, AuditEntry
 from django_access.services.access_service import Actor
-from django_access.services.tokens import hash_key, is_secret
+from django_access.services.tokens import ACTIVE, hash_key, is_secret, lifecycle_state
 
 logger = logging.getLogger("django_access.legacy")
 
@@ -37,6 +40,8 @@ LEGACY_PREFIX_LENGTH = 6
 LEGACY_SOURCE_LENGTH = ApiToken._meta.get_field("legacy_source").max_length
 CONTACT_FORM_SCOPES = {"contact_form": "contact_forms.submit", "booking": "contact_forms.booking"}
 DELETED, REFUSED, NOT_IMPORTED = "deleted", "refused", "not_imported"
+RECENT_DAYS = 30
+NEVER, NONE = "never", "none"
 
 
 @dataclass(frozen=True)
@@ -118,8 +123,11 @@ def _counts(entry: SourceReport) -> dict:
 
 @dataclass
 class PurgeReport:
+    """Per source the ids by verdict; ``last_used`` = when the token of each refused id was last used."""
+
     sources: dict[str, dict[str, list[str]]] = field(default_factory=lambda: defaultdict(lambda: defaultdict(list)))
     remove_settings: list[str] = field(default_factory=list)
+    last_used: dict[str, datetime] = field(default_factory=dict)
 
     def add(self, verdict: str, source: str, ref: str) -> None:
         self.sources[source][verdict].append(ref)
@@ -136,15 +144,23 @@ class _Run:
 
 
 @dataclass(frozen=True)
+class PurgeOptions:
+    """``dry_run`` lists only; ``force`` also deletes recently used and never-imported rows."""
+
+    force: bool = False
+    dry_run: bool = False
+    recent_days: int = RECENT_DAYS
+
+
+@dataclass(frozen=True)
 class _Purge:
     now: datetime
-    force: bool
-    dry_run: bool
+    options: PurgeOptions
     report: PurgeReport
 
-
-def _ttl() -> timedelta:
-    return timedelta(days=getattr(settings, "ACCESS_LEGACY_KEY_TTL_DAYS", 90))
+    @property
+    def recent(self) -> datetime:
+        return self.now - timedelta(days=self.options.recent_days)
 
 
 def _model(source: Source) -> type[models.Model] | None:
@@ -222,7 +238,7 @@ def _legacy_source(refs: list[str]) -> str:
     return ",".join([*kept, f"+{len(refs) - len(kept)} more"])
 
 
-def _create_token(group: list[LegacyKey], scopes: list[str], now: datetime) -> None:
+def _create_token(group: list[LegacyKey], scopes: list[str]) -> None:
     value, channels = group[0].value, {key.channel_idx for key in group}
     short = len(value) < SHORT_SECRET_LENGTH
     application, _ = Application.objects.get_or_create(name=f"Legacy keys: {group[0].module}")
@@ -234,7 +250,7 @@ def _create_token(group: list[LegacyKey], scopes: list[str], now: datetime) -> N
         last_four="" if short else value[-4:],
         scopes=scopes,
         channel_idx=next(iter(channels)) if len(channels) == 1 else None,
-        expires_at=now + _ttl(),
+        expires_at=None,
         legacy=True,
         legacy_source=_legacy_source(_refs(group)),
     )
@@ -255,7 +271,7 @@ def _store(group: list[LegacyKey], scopes: list[str], run: _Run) -> None:
     if not run.dry_run:
         try:
             with transaction.atomic():
-                _create_token(group, scopes, run.now)
+                _create_token(group, scopes)
         except Exception as exc:
             _failed(run.report, sorted({key.source for key in group}), exc)
             return
@@ -316,12 +332,19 @@ def import_after_migrate(sender, using: str = DEFAULT_DB_ALIAS, **kwargs) -> Non
     logger.info("Legacy key import: %s", report.as_dict())
 
 
+def _in_use(token: ApiToken, purge: _Purge) -> bool:
+    """An active token used within ``recent_days``: its plaintext row is the only way back for a key still in use."""
+    recently = token.last_used_at is not None and token.last_used_at >= purge.recent
+    return recently and lifecycle_state(token, purge.now) == ACTIVE
+
+
 def _verdict(token: ApiToken | None, purge: _Purge) -> str:
-    """Deleted once the token's window is over or it was revoked; never-imported and in-window rows need ``force``."""
+    """Deleted unless the key was never imported or is still in use — both only with ``force``."""
+    if purge.options.force:
+        return DELETED
     if token is None:
-        return DELETED if purge.force else NOT_IMPORTED
-    over = token.revoked_at is not None or (token.expires_at is not None and token.expires_at <= purge.now)
-    return DELETED if over or purge.force else REFUSED
+        return NOT_IMPORTED
+    return REFUSED if _in_use(token, purge) else DELETED
 
 
 def _tokens_by_hash(values: list[str]) -> dict[str, ApiToken]:
@@ -329,22 +352,28 @@ def _tokens_by_hash(values: list[str]) -> dict[str, ApiToken]:
     return {token.key_hash: token for token in ApiToken.objects.filter(key_hash__in=hashes)}
 
 
+def _judge(token: ApiToken | None, ref: str, source: str, purge: _Purge) -> str:
+    verdict = _verdict(token, purge)
+    purge.report.add(verdict, source, ref)
+    if verdict == REFUSED:
+        purge.report.last_used[ref] = token.last_used_at
+    return verdict
+
+
 def _purge_source(model: type[models.Model], source: Source, purge: _Purge) -> None:
     rows = list(model._default_manager.order_by("pk").values_list("pk", "key"))
     tokens = _tokens_by_hash([value for _, value in rows])
     doomed = []
     for pk, value in rows:
-        verdict = _verdict(tokens.get(hash_key(value)) if value else None, purge)
-        purge.report.add(verdict, source.model, f"{source.model}#{pk}")
-        if verdict == DELETED:
+        token = tokens.get(hash_key(value)) if value else None
+        if _judge(token, f"{source.model}#{pk}", source.model, purge) == DELETED:
             doomed.append(pk)
-    if doomed and not purge.dry_run:
+    if doomed and not purge.options.dry_run:
         model._default_manager.filter(pk__in=doomed).delete()
 
 
 def _purge_agreements(purge: _Purge) -> None:
-    """The setting cannot be deleted by code: name it once its token's window is over or revoked (or, for an imported
-    setting, with ``force``)."""
+    """The setting cannot be deleted by code: name it once imported and not in use (or with ``force``)."""
     if not (value := getattr(settings, "AGREEMENTS_API_KEY", "")):
         return
     token = _tokens_by_hash([value]).get(hash_key(value))
@@ -354,14 +383,44 @@ def _purge_agreements(purge: _Purge) -> None:
 
 @transaction.atomic
 def purge_legacy_sources(
-    *, force: bool = False, dry_run: bool = False, now: datetime | None = None, actor: Actor
+    options: PurgeOptions | None = None, *, now: datetime | None = None, actor: Actor
 ) -> PurgeReport:
-    """Delete the plaintext legacy rows whose token's window is over; in-window rows are refused unless ``force``."""
-    purge = _Purge(now or timezone.now(), force, dry_run, PurgeReport())
+    """Delete the plaintext rows of imported legacy keys, no time gate; recently used keys are refused unless forced."""
+    options = options or PurgeOptions()
+    purge = _Purge(now or timezone.now(), options, PurgeReport())
     for source in SOURCES:
         if (model := _model(source)) is not None:
             _purge_source(model, source, purge)
     _purge_agreements(purge)
-    if (deleted := purge.report.ids(DELETED)) and not dry_run:
-        _record_run(AuditAction.LEGACY_PURGE, actor, {"deleted": len(deleted), "ids": deleted, "force": force})
+    if (deleted := purge.report.ids(DELETED)) and not options.dry_run:
+        detail = {"deleted": len(deleted), "ids": deleted, "force": options.force, "recent_days": options.recent_days}
+        _record_run(AuditAction.LEGACY_PURGE, actor, detail)
     return purge.report
+
+
+def module_of(legacy_source: str) -> str:
+    """The module a legacy token came from: the app label of its first id, ``django_agreements`` for the setting."""
+    return "django_agreements" if legacy_source.startswith(AGREEMENTS_SOURCE) else legacy_source.split(".")[0]
+
+
+def _report_row(token: ApiToken, now: datetime) -> dict:
+    """One legacy token as the report shows it — ``prefix…last_four`` only, never a value or ``key_hash``."""
+    return {
+        "id": token.pk,
+        "application": token.application.name,
+        "source": token.legacy_source,
+        "display": token.display,
+        "scopes": token.scopes,
+        "channel_idx": token.channel_idx,
+        "created_at": token.created_at.isoformat(),
+        "last_used_at": token.last_used_at.isoformat() if token.last_used_at else NEVER,
+        "expires_at": token.expires_at.isoformat() if token.expires_at else NONE,
+        "state": lifecycle_state(token, now),
+    }
+
+
+def legacy_report(module: str | None = None) -> list[dict]:
+    """Every legacy token (of ``module`` when given), sorted by source: who still uses which legacy key."""
+    now = timezone.now()
+    rows = ApiToken.objects.filter(legacy=True).select_related("application").order_by("legacy_source", "pk")
+    return [_report_row(token, now) for token in rows if module is None or module_of(token.legacy_source) == module]

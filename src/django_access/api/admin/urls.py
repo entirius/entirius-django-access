@@ -26,4 +26,5 @@ urlpatterns = [
     ),
     path("tokens/<int:pk>/rotate/", tokens.TokenRotateView.as_view(), name="admin-access-token-rotate"),
     path("tokens/<int:pk>/revoke/", tokens.TokenRevokeView.as_view(), name="admin-access-token-revoke"),
+    path("tokens/<int:pk>/expiry/", tokens.TokenExpiryView.as_view(), name="admin-access-token-expiry"),
 ]

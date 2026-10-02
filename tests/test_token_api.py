@@ -33,7 +33,7 @@ call = call_token_api
 
 
 def expected(name: str, method: str, path: str) -> int:
-    return REFUSED.get(name, 200 if path.endswith("revoke/") else OK[method])
+    return REFUSED.get(name, 200 if path.endswith(("revoke/", "expiry/")) else OK[method])
 
 
 def in_days(days: int) -> str:

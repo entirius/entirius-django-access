@@ -45,7 +45,7 @@ def report_lines(report: legacy.LegacyReport, *, ids: bool, check: bool = False)
 
 
 class Command(BaseCommand):
-    help = "Import the legacy per-module keys as hashed tokens with a 90-day window (never prints a key or a hash)."
+    help = "Import the legacy per-module keys as hashed tokens without an expiry (never prints a key or a hash)."
 
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true", help="report what would be imported, write nothing")

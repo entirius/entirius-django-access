@@ -43,7 +43,7 @@ def test_every_source_is_imported_with_the_same_secret(legacy_row, model, fields
     assert (token.scopes, token.channel_idx, token.legacy) == ([scope], channel, True)
     assert token.legacy_source == f"{model}#{row.pk}"
     assert (token.prefix, token.last_four) == (row.key[:6], row.key[-4:])
-    assert token.expires_at == now + timedelta(days=90)
+    assert token.expires_at is None
     assert token.application.name == f"Legacy keys: {model.split('.')[0]}"
     assert report.sources[model].imported == [f"{model}#{row.pk}"]
 
@@ -55,21 +55,14 @@ def test_one_application_per_module(legacy_row):
     assert set(ApiToken.objects.values_list("application__name", flat=True)) == {"Legacy keys: django_checkout"}
 
 
-def test_ttl_follows_the_setting(legacy_row, settings):
-    settings.ACCESS_LEGACY_KEY_TTL_DAYS = 7
-    row = legacy_row("django_vault.APIKey")
-    now = timezone.now()
-    legacy.import_legacy_keys(now=now)
-    assert token_of(row.key).expires_at == now + timedelta(days=7)
-
-
-def test_rerun_is_idempotent_and_never_extends_the_expiry(legacy_row):
+def test_rerun_is_idempotent_and_keeps_an_expiry_a_team_set(legacy_row):
     row = legacy_row("django_checkout.APIKey", channel="emporium")
-    first = timezone.now() - timedelta(days=30)
-    legacy.import_legacy_keys(now=first)
+    legacy.import_legacy_keys()
+    expiry = timezone.now() + timedelta(days=30)
+    ApiToken.objects.update(expires_at=expiry)
     report = legacy.import_legacy_keys()
     assert ApiToken.objects.count() == 1
-    assert token_of(row.key).expires_at == first + timedelta(days=90)
+    assert token_of(row.key).expires_at == expiry
     assert report.sources["django_checkout.APIKey"].present == [f"django_checkout.APIKey#{row.pk}"]
     assert import_runs() == 1
 

@@ -22,7 +22,7 @@ from django_access.api.admin.views._base import (
 )
 from django_access.exceptions import AccessConflict
 from django_access.models import ApiToken, Application
-from django_access.schemas.requests import PageQuery, TokenCreateRequest, TokenRotateRequest
+from django_access.schemas.requests import PageQuery, TokenCreateRequest, TokenExpiryRequest, TokenRotateRequest
 from django_access.schemas.responses import TokenListResponse, TokenResponse, TokenSecretResponse
 from django_access.services import tokens
 
@@ -104,4 +104,20 @@ class TokenRevokeView(AdminView):
         with suppress(AccessConflict):  # already revoked
             tokens.revoke_token(token, actor=actor(request))
         token.refresh_from_db()
+        return Response(dump(token))
+
+
+class TokenExpiryView(AdminView):
+    @extend_schema(
+        tags=_TAGS,
+        summary="Set or clear a token's expiry",
+        description="Audited `token.expiry`. Legacy keys never expire by themselves; a team sets or clears it here.",
+        request=TokenExpiryRequest,
+        responses={200: TokenResponse, **WRITE_ERRORS},
+    )
+    def post(self, request: Request, pk: int) -> Response:
+        data = parse(TokenExpiryRequest, request.data)
+        token = self.one(ApiToken.objects.all(), pk)
+        with service_errors():
+            token = tokens.set_token_expiry(token, expires_at=data.expires_at, actor=actor(request))
         return Response(dump(token))

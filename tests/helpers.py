@@ -22,6 +22,7 @@ TOKEN_ENDPOINTS = [
     ("post", "applications/{application}/tokens/", {"scopes": ["checkout.storefront"]}),
     ("post", "tokens/{token}/rotate/", {}),
     ("post", "tokens/{token}/revoke/", None),
+    ("post", "tokens/{token}/expiry/", {"expires_at": None}),
 ]
 
 

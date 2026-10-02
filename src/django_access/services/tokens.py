@@ -198,6 +198,31 @@ def revoke_token(token: ApiToken, *, actor: Actor) -> ApiToken:
     return token
 
 
+def _iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value else None
+
+
+@transaction.atomic
+def set_token_expiry(token: ApiToken, *, expires_at: datetime | None, actor: Actor) -> ApiToken:
+    """Set or clear (``None``) a token's expiry. Legacy and publishable tokens take any future date or none (D28); an
+    issued secret token keeps the D21 cap. To stop a token now, revoke it."""
+    token = ApiToken.objects.select_for_update().get(pk=token.pk)
+    if token.revoked_at:
+        raise AccessConflict("A revoked token cannot get a new expiry")
+    now = timezone.now()
+    if expires_at is not None and expires_at <= now:
+        raise TokenExpiryError(
+            TokenExpiryError.EXPIRY_IN_PAST, "The expiry must be in the future (or revoke the token)"
+        )
+    if not token.legacy:
+        _check_expiry(token.scopes, expires_at, now)
+    change = {"token_id": token.pk, "legacy": token.legacy, "from": _iso(token.expires_at), "to": _iso(expires_at)}
+    token.expires_at = expires_at
+    token.save(update_fields=["expires_at"])
+    record_audit(AuditAction.TOKEN_EXPIRY, actor, token, change)
+    return token
+
+
 def lifecycle_state(token: ApiToken, now: datetime) -> str:
     """``revoked``, ``expired`` or ``active`` — the token's own state, whatever its application."""
     if token.revoked_at:

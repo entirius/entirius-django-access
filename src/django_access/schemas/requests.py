@@ -163,3 +163,13 @@ class TokenRotateRequest(BaseModel):
     )
 
     _future = field_validator("expires_at")(_check_future)
+
+
+class TokenExpiryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expires_at: AwareDatetime | None = Field(
+        description="The new expiry (in the future: else 400 `EXPIRY_IN_PAST`), or null to clear it. Legacy and "
+        "publishable tokens take any future date or null; an issued secret token keeps the 365-day cap "
+        "(`EXPIRY_REQUIRED` / `EXPIRY_TOO_LONG`). A revoked token → 409."
+    )

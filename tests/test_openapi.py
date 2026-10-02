@@ -23,6 +23,7 @@ OPERATIONS = {
     ("delete", ADMIN + "grants/{id}/"),
     *((method, ADMIN + "roles/{id}/") for method in ("get", "patch", "delete")),
     ("post", ADMIN + "tokens/{id}/revoke/"),
+    ("post", ADMIN + "tokens/{id}/expiry/"),
     ("post", ADMIN + "tokens/{id}/rotate/"),
     ("get", "/api/access/v2/me/"),
 }

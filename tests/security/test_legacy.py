@@ -1,7 +1,8 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""Legacy keys: short and mixed secrets, ``--check``, the purge, the expiry bite, and no secret in any output."""
+"""Legacy keys: short and mixed secrets, ``--check``, the purge on demand, an expiry a team set, and no secret in any
+output."""
 
 import logging
 import secrets
@@ -130,77 +131,100 @@ def test_check_fails_on_an_unimported_agreements_setting(settings, db):
     assert error is not None
 
 
-def test_purge_inside_the_window_is_refused(legacy_row):
+def used(value: str, days_ago: int) -> None:
+    ApiToken.objects.filter(key_hash=hash_key(value)).update(last_used_at=back(days_ago))
+
+
+def test_purge_without_yes_only_lists(legacy_row):
     row = legacy_row(STOREFRONT, channel="emporium")
     legacy.import_legacy_keys()
     out, error = run("access_purge_legacy_keys")
-    assert error is not None and rows(STOREFRONT) == 1
-    assert f"  refused: {STOREFRONT}#{row.pk}" in out
-    assert purge_rows() == []
+    assert error is None and rows(STOREFRONT) == 1 and purge_rows() == []
+    assert out.startswith("Listing only") and f"  deleted: {STOREFRONT}#{row.pk}" in out
 
 
-def test_purge_after_the_window_deletes_once(legacy_row):
+def test_purge_with_yes_deletes_without_a_time_gate(legacy_row):
     row = legacy_row(STOREFRONT, channel="emporium")
     legacy_row(RETURNS)
-    legacy.import_legacy_keys(now=back(91))
-    out, error = run("access_purge_legacy_keys")
+    legacy.import_legacy_keys()
+    out, error = run("access_purge_legacy_keys", "--yes")
     assert error is None and rows(STOREFRONT) == rows(RETURNS) == 0
     assert f"  deleted: {STOREFRONT}#{row.pk}" in out
     [entry] = purge_rows()
     assert entry.detail["deleted"] == 2 and row.key not in str(entry.detail)
 
 
+def test_a_recently_used_key_is_refused_without_force(legacy_row):
+    row = legacy_row(STOREFRONT, channel="emporium")
+    legacy.import_legacy_keys()
+    used(row.key, 3)
+    out, error = run("access_purge_legacy_keys", "--yes")
+    assert error is not None and rows(STOREFRONT) == 1 and purge_rows() == []
+    assert f"  refused: {STOREFRONT}#{row.pk} (last used {token_of(row.key).last_used_at.isoformat()})" in out
+    assert run("access_purge_legacy_keys", "--yes", "--recent-days", "2")[1] is None and rows(STOREFRONT) == 0
+
+
+def test_force_deletes_a_recently_used_key(legacy_row):
+    row = legacy_row(RETURNS)
+    legacy.import_legacy_keys()
+    used(row.key, 0)
+    _, error = run("access_purge_legacy_keys", "--yes", "--force")
+    assert error is None and rows(RETURNS) == 0 and purge_rows()[0].detail["force"] is True
+
+
+def test_a_revoked_key_used_recently_is_not_in_use(legacy_row, system):
+    row = legacy_row(RETURNS)
+    legacy.import_legacy_keys()
+    used(row.key, 0)
+    revoke_token(token_of(row.key), actor=system)
+    _, error = run("access_purge_legacy_keys", "--yes")
+    assert error is None and rows(RETURNS) == 0
+
+
 def test_a_second_purge_is_a_no_op(legacy_row, system):
     legacy_row(RETURNS)
-    legacy.import_legacy_keys(now=back(91))
+    legacy.import_legacy_keys()
     legacy.purge_legacy_sources(actor=system)
     report = legacy.purge_legacy_sources(actor=system)
     assert report.ids(legacy.DELETED) == [] and len(purge_rows()) == 1
 
 
-def test_a_revoked_token_row_is_purged_early(legacy_row, system):
-    row = legacy_row(RETURNS)
-    legacy.import_legacy_keys()
-    revoke_token(token_of(row.key), actor=system)
-    _, error = run("access_purge_legacy_keys")
-    assert error is None and rows(RETURNS) == 0
-
-
-def test_force_purges_in_window_and_never_imported_rows(legacy_row, mixed):
+def test_force_deletes_never_imported_rows(legacy_row, mixed):
     legacy_row(RETURNS)
     legacy_row("django_contact_forms.APIKey")  # null channel, never imported
     legacy.import_legacy_keys()
-    _, error = run("access_purge_legacy_keys", "--force")
+    _, error = run("access_purge_legacy_keys", "--yes", "--force")
     assert error is None
     assert rows(STOREFRONT) == rows(RETURNS) == rows("django_contact_forms.APIKey") == 0
-    assert purge_rows()[0].detail["force"] is True
 
 
 def test_never_imported_rows_are_kept_without_force(mixed):
     legacy.import_legacy_keys()
-    out, error = run("access_purge_legacy_keys")
+    out, error = run("access_purge_legacy_keys", "--yes")
     assert error is None and rows(STOREFRONT) == rows(RETURNS) == 1
     assert "not_imported 1" in out
 
 
-def test_dry_run_purge_deletes_nothing(legacy_row):
+def test_dry_run_is_an_alias_of_listing(legacy_row):
     legacy_row(RETURNS)
-    legacy.import_legacy_keys(now=back(91))
-    out, _ = run("access_purge_legacy_keys", "--dry-run", "--force")
-    assert out.startswith("Dry run") and rows(RETURNS) == 1 and purge_rows() == []
+    legacy.import_legacy_keys()
+    out, _ = run("access_purge_legacy_keys", "--dry-run", "--yes", "--force")
+    assert out.startswith("Listing only") and rows(RETURNS) == 1 and purge_rows() == []
 
 
-def test_the_agreements_setting_is_named_after_the_window(settings, db):
+def test_the_agreements_setting_is_named_unless_in_use(settings, db):
     settings.AGREEMENTS_API_KEY = secrets.token_hex(32)
     legacy.import_legacy_keys()
-    assert "remove AGREEMENTS_API_KEY" not in run("access_purge_legacy_keys")[0]
-    ApiToken.objects.update(expires_at=back(1))
-    assert "remove AGREEMENTS_API_KEY from settings_local" in run("access_purge_legacy_keys")[0]
+    used(settings.AGREEMENTS_API_KEY, 1)
+    assert "remove AGREEMENTS_API_KEY" not in run("access_purge_legacy_keys", "--yes")[0]
+    used(settings.AGREEMENTS_API_KEY, 31)
+    assert "remove AGREEMENTS_API_KEY from settings_local" in run("access_purge_legacy_keys", "--yes")[0]
 
 
 def test_an_expired_legacy_token_is_refused_and_never_revived(legacy_row, key_request):
     row = legacy_row(STOREFRONT, channel="emporium")
-    legacy.import_legacy_keys(now=back(91))
+    legacy.import_legacy_keys()
+    ApiToken.objects.update(expires_at=back(1))
     expiry = token_of(row.key).expires_at
     request = key_request(HTTP_X_API_KEY=row.key)
     assert verify_api_key(request, "checkout.storefront", "emporium") is None

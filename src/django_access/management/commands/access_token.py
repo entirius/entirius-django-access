@@ -1,13 +1,13 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""`manage.py access_token create|rotate|revoke|list` — application tokens from the command line.
+"""`manage.py access_token create|rotate|revoke|expire|list` — application tokens from the command line.
 
 ``create`` and ``rotate`` print the raw value once, alone on its stdout line (the rest goes to stderr); ``list`` shows
 ``prefix…last_four`` only. Nothing here ever prints ``key_hash``.
 """
 
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
@@ -26,8 +26,13 @@ def _positive(value: str) -> int:
     return number
 
 
+def _midnight(value: str) -> datetime:
+    """``YYYY-MM-DD`` → the start of that day in the current time zone."""
+    return timezone.make_aware(datetime.combine(date.fromisoformat(value), time.min))
+
+
 class Command(BaseCommand):
-    help = "Create, rotate, revoke and list application tokens."
+    help = "Create, rotate, revoke, expire and list application tokens."
 
     def add_arguments(self, parser):
         sub = parser.add_subparsers(dest="action", required=True)
@@ -43,11 +48,22 @@ class Command(BaseCommand):
         rotate.add_argument("--overlap-hours", type=int, default=24, help="hours the old token stays valid")
         revoke = sub.add_parser("revoke", help="revoke a token at once")
         revoke.add_argument("token_id", type=int)
+        expire = sub.add_parser("expire", help="set or clear a token's expiry (audited)")
+        expire.add_argument("token_id", type=int)
+        when = expire.add_mutually_exclusive_group(required=True)
+        when.add_argument("--at", type=_midnight, help="expire at the start of this day (YYYY-MM-DD)")
+        when.add_argument("--clear", action="store_true", help="remove the expiry")
         listing = sub.add_parser("list", help="list tokens (never a raw value)")
         listing.add_argument("--application", help="only this application's tokens")
 
     def handle(self, *args, action: str, **options) -> None:
-        handlers = {"create": self._create, "rotate": self._rotate, "revoke": self._revoke, "list": self._list}
+        handlers = {
+            "create": self._create,
+            "rotate": self._rotate,
+            "revoke": self._revoke,
+            "expire": self._expire,
+            "list": self._list,
+        }
         try:
             handlers[action](options)
         except (ValueError, AccessConflict) as exc:
@@ -90,6 +106,11 @@ class Command(BaseCommand):
     def _revoke(self, options: dict) -> None:
         token = tokens.revoke_token(self._token(options["token_id"]), actor=Actor())
         self.stdout.write(f"Token {token.pk} {token.display} revoked.")
+
+    def _expire(self, options: dict) -> None:
+        token = tokens.set_token_expiry(self._token(options["token_id"]), expires_at=options["at"], actor=Actor())
+        expires = token.expires_at.isoformat() if token.expires_at else "never"
+        self.stdout.write(f"Token {token.pk} {token.display} expires {expires}.")
 
     def _list(self, options: dict) -> None:
         queryset = ApiToken.objects.select_related("application").order_by("application__name", "id")
