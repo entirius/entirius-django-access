@@ -212,7 +212,10 @@ class TokenResponse(BaseModel):
 
     id: int = Field(examples=[7])
     name: str = Field(examples=["Shop"])
-    prefix: str = Field(description="The first 12 characters.", examples=["ent_api_Ab3d"])
+    prefix: str = Field(
+        description="The first 12 characters; 6 for a legacy key, `legacy` for a short one.",
+        examples=["ent_api_Ab3d"],
+    )
     last_four: str = Field(description="The last 4 characters; empty for a short legacy secret.", examples=["x9Q2"])
     scopes: list[str] = Field(examples=[["checkout.storefront"]])
     channel_idx: str | None = Field(description="The pinned channel, or null for every channel.")
@@ -220,7 +223,10 @@ class TokenResponse(BaseModel):
     last_used_at: datetime | None
     revoked_at: datetime | None
     legacy: bool = Field(description="Imported from a module's legacy key table.")
-    legacy_source: str = Field(description="`<app>.<Model>#<pk>` of the legacy key, empty for an issued token.")
+    legacy_source: str = Field(
+        description="`<app>.<Model>#<pk>` of the legacy key (comma-separated when one secret had several rows), "
+        "empty for an issued token."
+    )
     state: Literal["active", "expired", "revoked"] = Field(
         description="The token's own state; an inactive application stops its active tokens too (`is_active`)."
     )

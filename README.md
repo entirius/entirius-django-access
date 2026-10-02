@@ -9,4 +9,5 @@ platform.
 pip install entirius-django-access
 ```
 
-Status: scaffold (0.1.0). See `AGENTS.md`.
+Status: 0.1.0 (unreleased). Docs: `docs/install.md` (wiring, settings, deploy order), `docs/concept.md`,
+`docs/api.md`, `docs/operations.md`. Contributors: `AGENTS.md`.

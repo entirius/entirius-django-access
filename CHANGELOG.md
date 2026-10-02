@@ -85,6 +85,23 @@
 - `django_access.openapi.add_api_key_security`: drf-spectacular postprocessing hook adding the `ApiKeyAuth` scheme
   (`apiKey`, header `X-API-KEY`) and requiring it on every operation matching a token scope's routes, next to the
   operation's existing requirements.
+- Legacy keys (`services.legacy`): `import_legacy_keys(dry_run=, now=)` imports the seven module key tables
+  (accounts/checkout `APIAdminKey`, checkout and contact-forms `APIKey` pinned to their channel, returns, reviews and
+  vault `APIKey`) and `AGREEMENTS_API_KEY` as tokens with the same secret — one `Legacy keys: <app_label>`
+  application per module, `legacy=True`, `legacy_source` `<app>.<Model>#<pk>`, expiry = import +
+  `ACCESS_LEGACY_KEY_TTL_DAYS` (90). Idempotent by `key_hash`: an existing token is never changed (no expiry
+  extension, no revival). A secret on several channels → one unpinned token; a secret in a publishable and a secret
+  source → not imported (`mixed`); a secret under 32 characters → `prefix "legacy"`, empty `last_four`; a row
+  without a channel → skipped. Runs on `post_migrate` (errors logged by class, `migrate` never fails); one
+  `legacy.import` audit row per run that imported something.
+- `manage.py access_import_legacy_keys [--dry-run] [--report] [--check]`: counts and `legacy_source` ids only, never
+  a value or a hash; `--check` exits 1 while a key is not imported, a secret is `mixed` or a source fails.
+- `purge_legacy_sources` + `manage.py access_purge_legacy_keys [--dry-run] [--force]`: deletes the plaintext legacy
+  rows whose token's window is over or that was revoked; in-window rows are refused (exit 1) unless `--force`, which
+  also deletes never-imported rows; idempotent; one `legacy.purge` audit row per run that deleted something; names
+  `AGREEMENTS_API_KEY` for removal from the settings once its window is over.
+- Module docs: `docs/concept.md`, `install.md` (wiring, settings, deploy order, rollback, production hardening),
+  `api.md`, `operations.md`, `testing.md`, `gotchas.md`, `erd-config.yaml`, `openapi.yaml`.
 - Requires Django 5.1+.
 
 ## 0.1.0 (unreleased)
