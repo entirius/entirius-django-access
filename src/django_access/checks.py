@@ -1,7 +1,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""System checks (tag ``entirius_config``): a broken access catalogue is caught at boot.
+"""System checks (tag ``entirius_config``): a broken access catalogue is caught at boot; a per-process cache warns.
 
 An area whose module is not installed is not an error — the default catalogue covers modules a deployment may not run.
 """
@@ -9,11 +9,16 @@ An area whose module is not installed is not an error — the default catalogue 
 import re
 from collections import Counter
 
+from django.conf import settings
 from django.core import checks
 
 from django_access.catalogue import registry
 from django_access.catalogue.areas import AREA_KEY_RE, LEVEL_SETS, SENSITIVE_FLAGS, STAFF_BASELINE, Area
 from django_access.catalogue.defaults import RouteRule
+
+PROCESS_LOCAL_CACHES = frozenset(
+    {"django.core.cache.backends.locmem.LocMemCache", "django.core.cache.backends.dummy.DummyCache"}
+)
 
 
 @checks.register("entirius_config")
@@ -58,3 +63,19 @@ def _rule_errors(rule: RouteRule, known: set[str]) -> list[checks.Error]:
     except re.error as exc:
         errors.append(checks.Error(f"Route rule {rule.pattern!r} is not a valid regex: {exc}", id="django_access.E005"))
     return errors
+
+
+@checks.register("entirius_config")
+def permission_cache_is_shared(app_configs=None, **kwargs) -> list[checks.CheckMessage]:
+    """The permission cache version must reach every process: a per-process default cache delays revocations."""
+    backend = settings.CACHES.get("default", {}).get("BACKEND", "")
+    if settings.DEBUG or backend not in PROCESS_LOCAL_CACHES:
+        return []
+    return [
+        checks.Warning(
+            f"The default cache is {backend.rsplit('.', 1)[-1]}: permission changes reach other processes only after "
+            "the cache TIMEOUT",
+            hint="Use a shared cache (Redis) as the default cache.",
+            id="django_access.W002",
+        )
+    ]
