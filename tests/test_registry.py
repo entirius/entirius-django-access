@@ -8,9 +8,10 @@ from django.apps import apps
 from django.conf import settings
 from django.test import override_settings
 
+from django_access import checks
 from django_access.catalogue import registry
 from django_access.catalogue.areas import Area
-from django_access.catalogue.defaults import DEFAULT_RULES, RouteRule
+from django_access.catalogue.defaults import DEFAULT_RULES, AreaOverride, RouteRule
 from django_access.checks import catalogue_is_consistent
 
 
@@ -33,7 +34,7 @@ def ids(messages) -> list[str]:
 
 
 def test_defaults_without_declarations():
-    assert len(registry.areas()) == 48
+    assert len(registry.areas()) == 49
     assert len(registry.scopes()) == 9
     assert registry.route_rules() == DEFAULT_RULES
     assert registry.area("faq.faq").module == "django_faq"
@@ -114,6 +115,13 @@ def test_checks_fire_on_a_broken_declaration(faq_stub, monkeypatch):
         ["django_access.E001", "django_access.E002", "django_access.E003", "django_access.E005"]
         + ["django_access.E004"] * 3
     )
+
+
+def test_checks_fire_on_an_area_override_naming_an_unknown_area(monkeypatch):
+    """E.g. django_pim declaring its own areas without pim.product_delete: the SKU delete would refuse every staff user."""
+    monkeypatch.setattr(checks, "AREA_OVERRIDES", (AreaOverride("api/pim/v2/admin/", "DELETE", "pim.ghost"),))
+    [message] = catalogue_is_consistent()
+    assert message.id == "django_access.E003" and "pim.ghost" in message.msg
 
 
 def test_checks_report_an_unreadable_declaration(faq_stub, monkeypatch):

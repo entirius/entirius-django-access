@@ -21,7 +21,8 @@ MONEY = "money"
 SECRET = "secret"  # noqa: S105 — a sensitivity flag, not a credential
 AI_COST = "ai_cost"
 CONFIG = "config"
-SENSITIVE_FLAGS = frozenset({PII, MONEY, SECRET, AI_COST, CONFIG})
+DESTRUCTIVE = "destructive"
+SENSITIVE_FLAGS = frozenset({PII, MONEY, SECRET, AI_COST, CONFIG, DESTRUCTIVE})
 
 AREA_KEY_RE = re.compile(r"^[a-z_]+\.[a-z_]+$")
 
@@ -29,6 +30,8 @@ AREA_KEY_RE = re.compile(r"^[a-z_]+\.[a-z_]+$")
 STAFF_BASELINE = "staff.baseline"
 # Roles, grants, tokens, audit and the Django admin site; only the built-in Administrator role holds it.
 ACCESS_MANAGE = "access.manage"
+# Deleting a product (SKU): write only, apart from editing the catalogue (pim.products).
+PIM_PRODUCT_DELETE = "pim.product_delete"
 
 
 @dataclass(frozen=True)
@@ -52,6 +55,7 @@ DEFAULT_AREAS: tuple[Area, ...] = (
         ("pim.categories", "Categories and positions"),
         ("pim.schema", "Features, attributes, sets and link types"),
         ("pim.quality", "Quality gaps"),
+        (PIM_PRODUCT_DELETE, "Delete products (SKU)", WRITE_ONLY, (DESTRUCTIVE,)),
     ),
     *_module(
         "django_pim_translator", ("pim_translator.translate", "AI translation (catalogue)", READ_WRITE, (AI_COST,))

@@ -12,7 +12,7 @@ on its admin root, so a new route of a known module lands in the module's broade
 import re
 from dataclasses import dataclass
 
-from django_access.catalogue.areas import ACCESS_MANAGE, READ, STAFF_BASELINE, WRITE
+from django_access.catalogue.areas import ACCESS_MANAGE, PIM_PRODUCT_DELETE, READ, STAFF_BASELINE, WRITE
 
 SEGMENT = r"[^/]+/"
 # DRF router routes end a name with "/" or with the format-suffix twin "\.(?P<format>…)".
@@ -225,6 +225,27 @@ METHOD_OVERRIDES: tuple[MethodOverride, ...] = (
         f"{_CONTENTDB_V1}(?:content|layout-extender)/.*/published{ROUTER_END}",
     ),
 )
+
+
+@dataclass(frozen=True)
+class AreaOverride:
+    """The area ``method`` needs on routes matching ``pattern`` when the route's own area is broader than the action."""
+
+    pattern: str
+    method: str
+    area: str
+
+    def matches(self, route: str) -> bool:
+        return re.match(self.pattern, route) is not None
+
+
+# Memo 09b: the routes that delete a PIM SKU need pim.product_delete:write — the PIM product DELETE (both roots) and
+# the RealProduct merge, which deletes the loser SKU in every channel. Media, file and link deletes stay on pim.products.
+AREA_OVERRIDES: tuple[AreaOverride, ...] = (
+    AreaOverride(f"api/pim/(?:v2/)?admin/{SEGMENT}products/{SEGMENT}$", "DELETE", PIM_PRODUCT_DELETE),
+    AreaOverride("api/(?:atlas|suppliers)/v2/admin/realproducts/merge-by-ean/$", "POST", PIM_PRODUCT_DELETE),
+)
+
 # Admin although neither the path nor the view's permission classes say so (r01 §6): munin health (local
 # IsAdminUser outside /admin/), the returns session downloads, the pim staff-only viewer (pim 3.3.1).
 ADMIN_ROUTES: tuple[str, ...] = (

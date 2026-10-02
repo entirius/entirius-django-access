@@ -25,6 +25,7 @@ from django_access.catalogue import registry
 from django_access.catalogue.areas import READ, STAFF_BASELINE, WRITE
 from django_access.catalogue.defaults import (
     ADMIN_ROUTES,
+    AREA_OVERRIDES,
     FRAMEWORK_RULES,
     METHOD_OVERRIDES,
     NOT_ADMIN_ROUTES,
@@ -60,6 +61,7 @@ class RouteInfo:
     admin: bool
     area: str | None
     method_levels: dict[str, str] = field(default_factory=dict)
+    method_areas: dict[str, str] = field(default_factory=dict)
     self_auth: bool = False
     auth: tuple[str, ...] = ()
 
@@ -101,7 +103,8 @@ def _classify(route: str, callback: Callable) -> RouteInfo:
         owner=owner,
         admin=_is_admin(path, callback),
         area=rule.area if rule else None,
-        method_levels=_method_levels(path),
+        method_levels=_per_method(METHOD_OVERRIDES, "level", path),
+        method_areas=_per_method(AREA_OVERRIDES, "area", path),
         self_auth=_self_auth(path, callback),
         auth=tuple(_dotted(item) for item in _authentication_classes(callback)),
     )
@@ -120,13 +123,13 @@ def _first_match(rules, path: str) -> RouteRule | None:
     return next((item for item in rules if item.matches(path)), None)
 
 
-def _method_levels(path: str) -> dict[str, str]:
-    """Level per overridden method; the first matching override wins, as for route rules."""
-    levels: dict[str, str] = {}
-    for item in METHOD_OVERRIDES:
+def _per_method(overrides: tuple, attr: str, path: str) -> dict[str, str]:
+    """``attr`` per overridden method; the first matching override wins, as for route rules."""
+    values: dict[str, str] = {}
+    for item in overrides:
         if item.matches(path):
-            levels.setdefault(item.method, item.level)
-    return levels
+            values.setdefault(item.method, getattr(item, attr))
+    return values
 
 
 def _owner(callback: Callable) -> str:
@@ -223,16 +226,18 @@ def _requires_auth(item: object) -> bool:
 def required_permission(info: RouteInfo, method: str) -> str | None:
     """``<area>:<level>`` the method needs, ``"staff.baseline"``, or ``None`` when the route has no area.
 
-    A level the area does not offer becomes write: a write-only area needs write for every method, and a write on a
-    read-only area needs a key no role holds — refused, never an error.
+    An area override replaces the route's area for its method (deleting a SKU is not editing it). A level the area
+    does not offer becomes write: a write-only area needs write for every method, and a write on a read-only area
+    needs a key no role holds — refused, never an error.
     """
     if info.area is None or info.area == STAFF_BASELINE:
         return info.area
     method = method.upper()
+    area = info.method_areas.get(method, info.area)
     level = info.method_levels.get(method) or (READ if method in SAFE_METHODS else WRITE)
-    if level not in _levels(info.area):
+    if level not in _levels(area):
         level = WRITE
-    return f"{info.area}:{level}"
+    return f"{area}:{level}"
 
 
 def _levels(area_key: str) -> tuple[str, ...]:
@@ -316,7 +321,14 @@ def _write_json(path: str, entries: list, summary: dict, unmapped: list[str], fo
 
 
 def _admin_entry(info: RouteInfo) -> dict:
-    return {"route": info.route, "owner": info.owner, "area": info.area, "self_auth": info.self_auth, "auth": info.auth}
+    return {
+        "route": info.route,
+        "owner": info.owner,
+        "area": info.area,
+        "method_areas": info.method_areas,
+        "self_auth": info.self_auth,
+        "auth": info.auth,
+    }
 
 
 def _non_admin_entry(info: RouteInfo, callback: Callable) -> dict:

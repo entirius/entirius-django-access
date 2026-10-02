@@ -17,7 +17,7 @@ def area_for(route: str) -> str | None:
 
 
 def test_counts():
-    assert len(DEFAULT_AREAS) == 48
+    assert len(DEFAULT_AREAS) == 49
     assert len(DEFAULT_SCOPES) == 9
     assert len({rule.module for rule in DEFAULT_RULES}) == 26  # the 25 modules + access itself
 
@@ -43,6 +43,7 @@ def test_read_only_and_write_only_areas():
         "accounts.customers",
     ]
     assert [key for key, value in levels.items() if value == ("write",)] == [
+        "pim.product_delete",
         "content.publish",
         "returns.attachments",
         "platform.devtools",

@@ -58,7 +58,7 @@ def test_patch_adding_access_manage_is_reserved(admin_api, custom, key):
 def test_catalogue_marks_only_access_manage_unassignable(admin_api):
     areas = [area for module in admin_api.get(URL + "catalogue/").json()["modules"] for area in module["areas"]]
     assert [area["key"] for area in areas if not area["assignable"]] == [ACCESS_MANAGE]
-    assert len(areas) == 48
+    assert len(areas) == 49
 
 
 def test_administrator_still_carries_access_manage(admin_api, role):
@@ -125,7 +125,7 @@ def test_role_key_must_be_a_slug(admin_api, key):
 
 @pytest.mark.parametrize(
     "body",
-    [{"name": "n" * 101}, {"description": "d" * 1001}, {"permissions": ["qms.stock:read"] * 97}],
+    [{"name": "n" * 101}, {"description": "d" * 1001}, {"permissions": ["qms.stock:read"] * 99}],
 )
 def test_role_length_limits(admin_api, body):
     assert admin_api.post(URL + "roles/", {"key": "limits", "name": "L", **body}, format="json").status_code == 400

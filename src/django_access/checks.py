@@ -15,7 +15,7 @@ from django.core import checks
 
 from django_access.catalogue import registry
 from django_access.catalogue.areas import AREA_KEY_RE, LEVEL_SETS, SENSITIVE_FLAGS, STAFF_BASELINE, Area
-from django_access.catalogue.defaults import RouteRule
+from django_access.catalogue.defaults import AREA_OVERRIDES, RouteRule
 from django_access.services.gate import ENFORCE, MODE_SETTING, MODES
 
 PROCESS_LOCAL_CACHES = frozenset(
@@ -35,6 +35,16 @@ def catalogue_is_consistent(app_configs=None, **kwargs) -> list[checks.CheckMess
         *_duplicates((item.key for item in catalogue.scopes), "token scope", "django_access.E002"),
         *(error for item in catalogue.areas for error in _area_errors(item)),
         *(error for rule in catalogue.rules for error in _rule_errors(rule, known)),
+        *_override_errors(known),
+    ]
+
+
+def _override_errors(known: set[str]) -> list[checks.Error]:
+    """An area override naming an area a module's own declaration dropped would refuse everyone but superusers."""
+    return [
+        checks.Error(f"Area override {item.pattern!r} names unknown area {item.area!r}", id="django_access.E003")
+        for item in AREA_OVERRIDES
+        if item.area not in known
     ]
 
 
