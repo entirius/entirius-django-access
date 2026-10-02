@@ -100,14 +100,14 @@ def service_errors() -> Iterator[None]:
 
 
 def client_ip(request: Request) -> str | None:
-    """The client address by DRF's ``NUM_PROXIES``: set → the ``X-Forwarded-For`` entry that many hops from the right;
-    unset, ``0`` or a header shorter than that → ``REMOTE_ADDR``, so a client-sent entry never reaches the audit."""
+    """The client address by DRF's ``NUM_PROXIES`` rule, as its throttles take it: set → the ``X-Forwarded-For`` entry
+    ``min(NUM_PROXIES, entries)`` hops from the right; unset, ``0`` or no header → ``REMOTE_ADDR``."""
     address = request.META.get("REMOTE_ADDR")
     forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
-    hops = forwarded.split(",") if forwarded else []
     num_proxies = api_settings.NUM_PROXIES
-    if num_proxies and len(hops) >= num_proxies:
-        address = hops[-num_proxies].strip()
+    if num_proxies and forwarded:
+        hops = forwarded.split(",")
+        address = hops[-min(num_proxies, len(hops))].strip()
     try:
         return str(ipaddress.ip_address(address))
     except ValueError:

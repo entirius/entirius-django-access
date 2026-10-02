@@ -46,7 +46,7 @@ def test_one_proxy_takes_the_rightmost_forwarded_entry():
 @proxies(2)
 def test_two_proxies_count_from_the_right():
     assert ip_of(PROXY, f"{SPOOFED}, {VISITOR}, {CDN}") == VISITOR
-    assert ip_of(PROXY, VISITOR) == PROXY  # fewer entries than proxies: the client wrote them all
+    assert ip_of(PROXY, VISITOR) == VISITOR  # fewer entries than proxies: DRF's min() rule, as its throttles
 
 
 @proxies(0)
@@ -87,15 +87,35 @@ def mutations(custom, make_user, group, role, system) -> list[tuple]:
     ]
 
 
+def token_mutations(application, issue) -> list[tuple]:
+    rotated, _ = issue()
+    revoked, _ = issue()
+    app, token = "django_access.application", "django_access.apitoken"
+    return [
+        ("post", "applications/", {"name": "Widget"}, AuditAction.APPLICATION_CREATE, app),
+        ("patch", f"applications/{application.pk}/", {"description": "Shop"}, AuditAction.APPLICATION_UPDATE, app),
+        (
+            "post",
+            f"applications/{application.pk}/tokens/",
+            {"scopes": ["checkout.storefront"]},
+            AuditAction.TOKEN_CREATE,
+            token,
+        ),
+        ("post", f"tokens/{rotated.pk}/rotate/", {}, AuditAction.TOKEN_ROTATE, token),
+        ("post", f"tokens/{revoked.pk}/revoke/", None, AuditAction.TOKEN_REVOKE, token),
+    ]
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize("num_proxies", [None, 1])
 def test_every_mutation_leaves_one_row_with_actor_address_and_target(
-    num_proxies, custom, make_user, group, role, system, person, api_as
+    num_proxies, custom, make_user, group, role, system, application, issue, person, api_as
 ):
     administrator = person("administrator")
     client = api_as(administrator)
+    cases = [*mutations(custom, make_user, group, role, system), *token_mutations(application, issue)]
     with proxies(num_proxies):
-        for method, path, body, action, target_type in mutations(custom, make_user, group, role, system):
+        for method, path, body, action, target_type in cases:
             before = AuditEntry.objects.count()
             forwarded = {"HTTP_X_FORWARDED_FOR": f"{SPOOFED}, {CDN}, {VISITOR}", "REMOTE_ADDR": PROXY}
             response = getattr(client, method)(URL + path, body, format="json", **forwarded)
