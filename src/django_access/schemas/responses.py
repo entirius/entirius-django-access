@@ -4,7 +4,7 @@
 """Response schemas of the access API v2 (`me` and admin). Every label is plain data — the API never renders HTML."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -29,9 +29,20 @@ class BuiltinRoleResponse(BaseModel):
     permissions: dict[str, str] = Field(description="`{area: read | write}` computed from the catalogue.")
 
 
+class ScopeResponse(BaseModel):
+    key: str = Field(description="Token scope key.", examples=["checkout.storefront"])
+    label: str = Field(
+        description="English label; the CMS translates by key.", examples=["Storefront carts and orders"]
+    )
+    module: str = Field(description="App label of the owning module.", examples=["django_checkout"])
+    publishable: bool = Field(description="Reaches browsers by design; a secret scope's token must expire.")
+    routes: list[str] = Field(description="Route patterns for docs, not matching rules.")
+
+
 class CatalogueResponse(BaseModel):
     modules: list[ModuleAreasResponse]
     roles: list[BuiltinRoleResponse]
+    scopes: list[ScopeResponse]
 
 
 class RoleResponse(BaseModel):
@@ -175,3 +186,55 @@ class MeResponse(BaseModel):
     manages_access: bool
     roles: list[MeRoleResponse]
     permissions: dict[str, str] = Field(description="`{area: read | write}`; `{}` for a non-staff user.")
+
+
+class ApplicationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(examples=[3])
+    name: str = Field(examples=["Storefront"])
+    description: str
+    is_active: bool = Field(description="False stops every token of the application.")
+    created_at: datetime
+
+
+class ApplicationListResponse(BaseModel):
+    count: int
+    next: str | None
+    previous: str | None
+    results: list[ApplicationResponse]
+
+
+class TokenResponse(BaseModel):
+    """A token as it is shown after issue: identified by ``prefix`` and ``last_four``, never by its value."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(examples=[7])
+    name: str = Field(examples=["Shop"])
+    prefix: str = Field(description="The first 12 characters.", examples=["ent_api_Ab3d"])
+    last_four: str = Field(description="The last 4 characters; empty for a short legacy secret.", examples=["x9Q2"])
+    scopes: list[str] = Field(examples=[["checkout.storefront"]])
+    channel_idx: str | None = Field(description="The pinned channel, or null for every channel.")
+    expires_at: datetime | None
+    last_used_at: datetime | None
+    revoked_at: datetime | None
+    legacy: bool = Field(description="Imported from a module's legacy key table.")
+    legacy_source: str = Field(description="`<app>.<Model>#<pk>` of the legacy key, empty for an issued token.")
+    state: Literal["active", "expired", "revoked"] = Field(
+        description="The token's own state; an inactive application stops its active tokens too (`is_active`)."
+    )
+
+
+class TokenSecretResponse(TokenResponse):
+    raw: str = Field(
+        description="The token value — in this response only; store it now, it is never shown again.",
+        examples=["ent_api_<shown once>"],
+    )
+
+
+class TokenListResponse(BaseModel):
+    count: int
+    next: str | None
+    previous: str | None
+    results: list[TokenResponse]

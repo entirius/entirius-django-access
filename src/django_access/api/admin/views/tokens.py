@@ -1,0 +1,107 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+"""Admin API v2 — application tokens: the raw value appears once, in the create or rotate response (never cached);
+every other response shows ``prefix`` and ``last_four`` only, and no response carries ``key_hash``."""
+
+from contextlib import suppress
+
+from django.utils import timezone
+from drf_spectacular.utils import extend_schema
+from rest_framework.request import Request
+from rest_framework.response import Response
+
+from django_access.api.admin.views._base import (
+    ERROR_RESPONSES,
+    PAGE_PARAMETERS,
+    WRITE_ERRORS,
+    AdminView,
+    actor,
+    parse,
+    service_errors,
+)
+from django_access.exceptions import AccessConflict
+from django_access.models import ApiToken, Application
+from django_access.schemas.requests import PageQuery, TokenCreateRequest, TokenRotateRequest
+from django_access.schemas.responses import TokenListResponse, TokenResponse, TokenSecretResponse
+from django_access.services import tokens
+
+_TAGS = ["Access tokens"]
+_SHOWN_ONCE = "The raw value is in this response only (`Cache-Control: no-store`)."
+
+
+def _fields(token: ApiToken) -> dict:
+    """The response whitelist read off the row, plus the state — never ``key_hash``."""
+    names = TokenResponse.model_fields.keys() - {"state"}
+    return {**{name: getattr(token, name) for name in names}, "state": tokens.lifecycle_state(token, timezone.now())}
+
+
+def dump(token: ApiToken) -> dict:
+    return TokenResponse(**_fields(token)).model_dump(mode="json")
+
+
+def shown_once(token: ApiToken, raw: str) -> Response:
+    response = Response(TokenSecretResponse(**_fields(token), raw=raw).model_dump(mode="json"), status=201)
+    response["Cache-Control"] = "no-store"
+    response["Pragma"] = "no-cache"
+    return response
+
+
+class ApplicationTokenListView(AdminView):
+    @extend_schema(
+        tags=_TAGS,
+        operation_id="access_tokens_list",
+        summary="An application's tokens, newest first (never their values)",
+        parameters=PAGE_PARAMETERS,
+        responses={200: TokenListResponse, **ERROR_RESPONSES},
+    )
+    def get(self, request: Request, pk: int) -> Response:
+        parse(PageQuery, request.query_params.dict())
+        application = self.one(Application.objects.all(), pk)
+        return self.paginated(request, application.tokens.all(), dump)
+
+    @extend_schema(
+        tags=_TAGS,
+        summary="Issue a token",
+        description=f"{_SHOWN_ONCE} Unknown scope, mixed publishable and secret scopes → 400.",
+        request=TokenCreateRequest,
+        responses={201: TokenSecretResponse, **WRITE_ERRORS},
+    )
+    def post(self, request: Request, pk: int) -> Response:
+        data = parse(TokenCreateRequest, request.data)
+        application = self.one(Application.objects.all(), pk)
+        with service_errors():
+            token, raw = tokens.issue_token(application, **data.model_dump(), actor=actor(request))
+        return shown_once(token, raw)
+
+
+class TokenRotateView(AdminView):
+    @extend_schema(
+        tags=_TAGS,
+        summary="Rotate a token: a successor with the same scopes and channel",
+        description=f"{_SHOWN_ONCE} The old token keeps working for `overlap_hours`. A revoked token → 409.",
+        request=TokenRotateRequest,
+        responses={201: TokenSecretResponse, **WRITE_ERRORS},
+    )
+    def post(self, request: Request, pk: int) -> Response:
+        data = parse(TokenRotateRequest, request.data)
+        token = self.one(ApiToken.objects.all(), pk)
+        with service_errors():
+            successor, raw = tokens.rotate_token(token, actor=actor(request), **data.model_dump())
+        return shown_once(successor, raw)
+
+
+class TokenRevokeView(AdminView):
+    @extend_schema(
+        tags=_TAGS,
+        summary="Revoke a token at once",
+        description="Idempotent: an already revoked token answers 200 again, without a second audit row.",
+        request=None,
+        responses={200: TokenResponse, **ERROR_RESPONSES},
+    )
+    def post(self, request: Request, pk: int) -> Response:
+        token = self.one(ApiToken.objects.all(), pk)
+        with suppress(AccessConflict):  # already revoked
+            tokens.revoke_token(token, actor=actor(request))
+        token.refresh_from_db()
+        return Response(dump(token))

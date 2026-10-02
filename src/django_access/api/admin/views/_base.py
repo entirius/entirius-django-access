@@ -23,7 +23,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from django_access.api.permissions import HasAreaPermission, IsStaffUser
-from django_access.exceptions import AccessConflict, ReservedPermission
+from django_access.exceptions import AccessConflict, ReservedPermission, TokenExpiryError
 from django_access.schemas.requests import MAX_PAGE_SIZE
 from django_access.services.access_service import Actor
 
@@ -83,13 +83,16 @@ def parse(schema: type[SchemaT], data: object) -> SchemaT:
 
 @contextmanager
 def service_errors() -> Iterator[None]:
-    """Service refusals as v2 errors: ``access.manage`` in a custom role → 400 ``ACCESS_MANAGE_RESERVED``, any other
-    ``ValueError`` → 400, ``AccessConflict`` (built-in role, duplicate, lockout) → 409 ``CONFLICT``."""
+    """Service refusals as v2 errors: ``access.manage`` in a custom role → 400 ``ACCESS_MANAGE_RESERVED``, a secret
+    token's expiry → 400 ``EXPIRY_REQUIRED`` / ``EXPIRY_TOO_LONG``, any other ``ValueError`` → 400, ``AccessConflict``
+    (built-in role, duplicate, lockout, revoked token) → 409 ``CONFLICT``."""
     try:
         yield
     except ReservedPermission:
         code = ReservedPermission.ACCESS_MANAGE_RESERVED
         raise DrfValidationError({"permissions": [DrfErrorDetail(RESERVED_DESCRIPTION, code=code)]}) from None
+    except TokenExpiryError as exc:
+        raise DrfValidationError({"expires_at": [DrfErrorDetail(str(exc), code=exc.code)]}) from None
     except ValueError as exc:
         raise DrfValidationError({"non_field_errors": [str(exc)]}) from None
     except AccessConflict as exc:

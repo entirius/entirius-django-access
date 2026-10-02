@@ -3,8 +3,10 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Request schemas of the access admin API v2: format and shape only — every access rule is the service's call."""
 
+from datetime import datetime
 from typing import Annotated
 
+from django.utils import timezone
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from django_access.catalogue import registry
@@ -12,6 +14,12 @@ from django_access.catalogue import registry
 ROLE_KEY_PATTERN = r"^[a-z][a-z0-9_-]{1,49}$"
 MAX_PAGE_SIZE = 100
 PermissionKey = Annotated[str, StringConstraints(max_length=128)]
+ScopeKey = Annotated[str, StringConstraints(max_length=64)]
+MAX_OVERLAP_HOURS = 168
+EXPIRY_DESCRIPTION = (
+    "When the token stops working; must be in the future. A token with a secret scope must expire, at most 365 days "
+    "ahead: none → 400 `EXPIRY_REQUIRED`, later → 400 `EXPIRY_TOO_LONG`."
+)
 
 
 def _check_permission_count(value: list[str] | None) -> list[str] | None:
@@ -53,10 +61,7 @@ class RoleUpdateRequest(BaseModel):
 
     @model_validator(mode="after")
     def some_field_not_null(self) -> "RoleUpdateRequest":
-        if not self.model_fields_set:
-            raise ValueError("at least one field is required")
-        if any(getattr(self, name) is None for name in self.model_fields_set):
-            raise ValueError("fields may not be null")
+        _check_update_fields(self)
         return self
 
 
@@ -89,3 +94,72 @@ class AuditListQuery(PageQuery):
     actor: int | None = Field(default=None, ge=1, description="Actor user id.")
     from_: AwareDatetime | None = Field(default=None, alias="from", description="Created at or after.")
     to: AwareDatetime | None = Field(default=None, description="Created at or before.")
+
+
+def _check_future(value: datetime | None) -> datetime | None:
+    if value is not None and value <= timezone.now():
+        raise ValueError("must be in the future")
+    return value
+
+
+def _check_update_fields(request: BaseModel) -> None:
+    """A PATCH body names at least one field and sets none of them to null."""
+    if not request.model_fields_set:
+        raise ValueError("at least one field is required")
+    if any(getattr(request, name) is None for name in request.model_fields_set):
+        raise ValueError("fields may not be null")
+
+
+class ApplicationCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=128, description="Unique display name.", examples=["Storefront"])
+    description: str = Field(default="", max_length=1000, description="What the application is for.")
+
+
+class ApplicationUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=128, description="Unique display name.")
+    description: str | None = Field(default=None, max_length=1000, description="What the application is for.")
+    is_active: bool | None = Field(default=None, description="False stops every token of the application.")
+
+    @model_validator(mode="after")
+    def some_field_not_null(self) -> "ApplicationUpdateRequest":
+        _check_update_fields(self)
+        return self
+
+
+class TokenCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(default="", max_length=128, description="What the token is used for.", examples=["Shop"])
+    scopes: list[ScopeKey] = Field(
+        min_length=1,
+        max_length=32,
+        description="Token scope keys from the catalogue; publishable and secret scopes never share a token.",
+        examples=[["checkout.storefront"]],
+    )
+    channel_idx: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        description="Pin to one channel (null = every channel). Not validated here: channels live in other modules.",
+        examples=["emporium"],
+    )
+    expires_at: AwareDatetime | None = Field(default=None, description=EXPIRY_DESCRIPTION)
+
+    _future = field_validator("expires_at")(_check_future)
+
+
+class TokenRotateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    overlap_hours: int = Field(
+        default=24, ge=0, le=MAX_OVERLAP_HOURS, description="Hours the old token keeps working (0 = stops at once)."
+    )
+    expires_at: AwareDatetime | None = Field(
+        default=None, description=f"Default: the old token's lifetime from now. {EXPIRY_DESCRIPTION}"
+    )
+
+    _future = field_validator("expires_at")(_check_future)
