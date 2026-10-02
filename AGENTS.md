@@ -39,7 +39,7 @@ Read first: `docs/install.md` (host) · `docs/api.md` (caller) · `docs/concept.
 src/django_access/
 ├── apps.py (checks, cache signals, post_migrate legacy import)  middleware.py (AccessGateMiddleware)
 │   openapi.py (ApiKeyAuth hook)  checks.py (E001–E006, E010, W002, W010)  signals.py  exceptions.py  urls.py
-├── catalogue/    areas (48)  scopes (9 token scopes)  defaults (route rules, method overrides)  registry
+├── catalogue/    areas (49)  scopes (9 token scopes)  defaults (route rules, method and area overrides)  registry
 ├── models/       role (Role, RolePermission)  grant  audit (AuditEntry, AuditAction)  application  token (ApiToken)
 ├── services/     access_service (every role/grant mutation + audit + lockout guard)  permissions (cached)
 │                 route_map (classify, audit_routes)  gate (decide)  tokens (issue, rotate, revoke, verify_api_key)

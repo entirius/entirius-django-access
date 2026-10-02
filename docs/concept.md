@@ -10,10 +10,16 @@ never grants.
 
 ## Areas and permissions
 
-The catalogue (`catalogue/`) is code, not data: 48 **areas** (`pim.products`, `checkout.orders`, …, `access.manage`,
+The catalogue (`catalogue/`) is code, not data: 49 **areas** (`pim.products`, `checkout.orders`, …, `access.manage`,
 `platform.devtools`), each offering `read` and usually `write`. A permission key is `<area>:read` or `<area>:write`;
 write implies read. A module can replace its own defaults with `AppConfig.access_areas`,
 `access_route_rules` and `access_token_scopes` — only for its own app label.
+
+**Deleting a SKU** is its own write-only area, `pim.product_delete` (flag `destructive`): editing the catalogue
+(`pim.products`) does not include it. It guards the PIM product `DELETE` (`api/pim/v2/admin/` and the legacy
+`api/pim/admin/`, which removes the SKU from one channel) and the atlas and suppliers `realproducts/merge-by-ean/`
+(which deletes the losing SKU in every channel). Deleting a SKU's pictures, files, videos or links stays
+`pim.products:write`. Administrator and Manager hold it, Editor and Viewer do not; custom roles may.
 
 **Staff baseline** — every active staff user, no grant needed: `me`, `catalogue`, regional reference lists,
 contentdb self-permission reads, the notifications inbox, the Django admin login/logout/password pages.
@@ -62,7 +68,8 @@ package), area and method; rules apply only to their own module's routes.
 | staff with the permission | passes |
 
 GET/HEAD/OPTIONS read, everything else writes — except the catalogue overrides: POST-reads count as read, the GET PII
-exports and downloads count as write (a Viewer never exports PII). The principal is what the view's own
+exports and downloads count as write (a Viewer never exports PII), and the SKU-deleting routes need
+`pim.product_delete:write` instead of their route's area. The principal is what the view's own
 authenticators would see, from SimpleJWT `JWTAuthentication` and DRF `SessionAuthentication` only; a session never
 counts on a JWT-only view, and API-key headers never open an admin route.
 

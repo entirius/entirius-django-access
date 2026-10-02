@@ -104,6 +104,10 @@
 - Module docs: `docs/concept.md`, `install.md` (wiring, settings, deploy order, rollback, production hardening),
   `api.md`, `operations.md`, `testing.md`, `gotchas.md`, `erd-config.yaml`, `openapi.yaml`.
 - Requires Django 5.1+.
+- Area `pim.product_delete` (write only, flag `destructive`, 49 areas): `catalogue.defaults.AREA_OVERRIDES` make the
+  PIM product `DELETE` (both roots) and the atlas/suppliers `realproducts/merge-by-ean/` need it instead of
+  `pim.products` / `*.products`; `RouteInfo.method_areas`, `method_areas` in the route audit JSON. Administrator and
+  Manager hold it, Editor does not. `E003` also fires on an area override naming an unknown area.
 
 ## 0.1.0 (unreleased)
 

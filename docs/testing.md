@@ -22,6 +22,7 @@ names and key fields — the real modules are not installed here. The `legacy_ro
 | `test_route_map.py` / `test_route_map_scoping.py` | classification, owner-scoped rules, `self_auth` per branch, Django admin rules, the route audit |
 | `test_permissions.py` / `test_access_service.py` / `test_migration_0002.py` | effective permissions and cache versions, every mutation with its audit row, lockout guard, reserved `access.manage`, grant targets, 0002 → Manager |
 | `test_gate.py` | the gate decision table, modes, bypass audit |
+| `test_product_delete.py` | `pim.product_delete`: built-in roles, both PIM roots, the RealProduct merge, media/file/link deletes, `me`, the audit report |
 | `test_tokens.py` / `test_access_token_command.py` | issue, rotate, revoke, verify, expiry rules, the CLI |
 | `test_admin_api.py` / `test_me_api.py` / `test_token_api.py` | every endpoint: auth matrix, bodies, conflicts, whitelists |
 | `test_openapi.py` | `spectacular --validate --fail-on-warn`, the `ApiKeyAuth` hook |
