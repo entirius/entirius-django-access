@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """System checks (tag ``entirius_config``): a broken access catalogue or gate mode is caught at boot; a per-process
-cache and a gate that does not enforce in production warn.
+cache and a gate that does not enforce in production warn; modules still on the access default rules are listed (Info).
 
 An area whose module is not installed is not an error — the default catalogue covers modules a deployment may not run.
 """
@@ -10,12 +10,14 @@ An area whose module is not installed is not an error — the default catalogue 
 import re
 from collections import Counter
 
+from django.apps import AppConfig, apps
 from django.conf import settings
 from django.core import checks
 
 from django_access.catalogue import registry
 from django_access.catalogue.areas import AREA_KEY_RE, LEVEL_SETS, SENSITIVE_FLAGS, STAFF_BASELINE, Area
 from django_access.catalogue.defaults import AREA_OVERRIDES, RouteRule
+from django_access.services import route_map
 from django_access.services.gate import ENFORCE, MODE_SETTING, MODES
 
 PROCESS_LOCAL_CACHES = frozenset(
@@ -107,3 +109,33 @@ def gate_mode_is_valid(app_configs=None, **kwargs) -> list[checks.CheckMessage]:
     if value != ENFORCE and not settings.DEBUG:
         return [checks.Warning(f"{MODE_SETTING} is {value!r}: the admin gate does not refuse", id="django_access.W010")]
     return []
+
+
+@checks.register("entirius_config")
+def modules_declare_own_rules(app_configs=None, **kwargs) -> list[checks.CheckMessage]:
+    """Migration progress: installed apps owning admin routes that declare neither ``access_areas`` nor
+    ``access_route_rules`` — their routes still live on the access defaults. Silent on an unreadable declaration
+    (``E006`` reports it)."""
+    try:
+        owners = {info.owner for info, _ in route_map.unique_entries() if info.admin}
+    except TypeError:
+        return []
+    labels = sorted(
+        config.label
+        for config in apps.get_app_configs()
+        if config.label in owners and config.label != "django_access" and not _declares_own(config)
+    )
+    if not labels:
+        return []
+    return [
+        checks.Info(
+            f"{len(labels)} module(s) own admin routes but declare no access rules of their own: {', '.join(labels)}",
+            hint="Declare access_areas and access_route_rules on the module's AppConfig (django_access "
+            "docs/module-authors.md).",
+            id="django_access.I001",
+        )
+    ]
+
+
+def _declares_own(config: AppConfig) -> bool:
+    return any(getattr(config, name, None) is not None for name in registry.OWN_DECLARATIONS)

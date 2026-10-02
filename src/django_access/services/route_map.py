@@ -250,26 +250,26 @@ def _levels(area_key: str) -> tuple[str, ...]:
 
 def audit_routes(out: TextIO, json_path: str | None = None) -> int:
     """Print the per-module summary, every unmapped admin route and every foreign rule match; 1 when any exists."""
-    entries = _unique_entries()
+    entries = unique_entries()
     infos = [info for info, _ in entries]
     summary = _summary(infos)
     unmapped = [info.route for info in infos if info.admin and info.area is None]
-    foreign = _foreign_rule_matches(infos)
+    foreign = foreign_rule_matches(infos)
     _print_audit(out, summary, unmapped, foreign)
     if json_path:
         _write_json(json_path, entries, summary, unmapped, foreign)
     return 1 if unmapped or foreign else 0
 
 
-def _unique_entries() -> list[tuple[RouteInfo, Callable]]:
+def unique_entries(urlconf: str | None = None) -> list[tuple[RouteInfo, Callable]]:
     """One ``(info, callback)`` per route string, the first one the resolver would match."""
     seen: dict[str, tuple[RouteInfo, Callable]] = {}
-    for route, callback in walk():
+    for route, callback in walk(urlconf):
         seen.setdefault(route, (classify(route, callback), callback))
     return list(seen.values())
 
 
-def _foreign_rule_matches(infos: list[RouteInfo]) -> list[dict[str, str]]:
+def foreign_rule_matches(infos: list[RouteInfo]) -> list[dict[str, str]]:
     """Every rule of another module whose pattern matches a route — owner scoping ignores it, the audit reports it."""
     return [
         {"route": info.route, "owner": info.owner, "rule_module": rule.module, "pattern": rule.pattern}

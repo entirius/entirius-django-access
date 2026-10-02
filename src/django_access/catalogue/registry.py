@@ -17,6 +17,9 @@ from django_access.catalogue.areas import ACCESS_MANAGE, DEFAULT_AREAS, WRITE, A
 from django_access.catalogue.defaults import DEFAULT_RULES, RouteRule
 from django_access.catalogue.scopes import DEFAULT_SCOPES, TokenScope
 
+# The declarations that move a module's route coverage off the defaults (token scopes are a separate concern).
+OWN_DECLARATIONS = ("access_areas", "access_route_rules")
+
 
 @dataclasses.dataclass(frozen=True)
 class Catalogue:
