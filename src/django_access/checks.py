@@ -1,8 +1,9 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""System checks (tag ``entirius_config``): a broken access catalogue or gate mode is caught at boot; a per-process
-cache and a gate that does not enforce in production warn; modules still on the access default rules are listed (Info).
+"""System checks (tag ``entirius_config``): a broken access catalogue, gate mode or view area is caught at boot; a
+per-process cache and a gate that does not enforce in production warn; modules still on the access default rules are
+listed (Info). ``check --deploy`` also refuses an enforcing gate over unmapped admin routes (``E011``).
 
 An area whose module is not installed is not an error — the default catalogue covers modules a deployment may not run.
 """
@@ -10,19 +11,21 @@ An area whose module is not installed is not an error — the default catalogue 
 import re
 from collections import Counter
 
-from django.apps import AppConfig, apps
+from django.apps import apps
 from django.conf import settings
 from django.core import checks
 
 from django_access.catalogue import registry
-from django_access.catalogue.areas import AREA_KEY_RE, LEVEL_SETS, SENSITIVE_FLAGS, STAFF_BASELINE, Area
+from django_access.catalogue.areas import AREA_KEY_RE, LEVEL_SETS, READ, SENSITIVE_FLAGS, STAFF_BASELINE, WRITE, Area
 from django_access.catalogue.defaults import AREA_OVERRIDES, RouteRule
-from django_access.services import route_map
+from django_access.services import gate, route_map
 from django_access.services.gate import ENFORCE, MODE_SETTING, MODES
 
 PROCESS_LOCAL_CACHES = frozenset(
     {"django.core.cache.backends.locmem.LocMemCache", "django.core.cache.backends.dummy.DummyCache"}
 )
+HTTP_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE", "TRACE"})
+UNMAPPED_SHOWN = 10
 
 
 @checks.register("entirius_config")
@@ -113,29 +116,88 @@ def gate_mode_is_valid(app_configs=None, **kwargs) -> list[checks.CheckMessage]:
 
 @checks.register("entirius_config")
 def modules_declare_own_rules(app_configs=None, **kwargs) -> list[checks.CheckMessage]:
-    """Migration progress: installed apps owning admin routes that declare neither ``access_areas`` nor
-    ``access_route_rules`` — their routes still live on the access defaults. Silent on an unreadable declaration
-    (``E006`` reports it)."""
+    """Migration progress: installed apps with at least one admin route whose area still comes from the access
+    defaults. Silent on an unreadable declaration (``E006`` reports it)."""
     try:
-        owners = {info.owner for info, _ in route_map.unique_entries() if info.admin}
+        owners = {
+            info.owner for info, _ in route_map.unique_entries() if info.admin and info.area_source == route_map.DEFAULT
+        }
     except TypeError:
         return []
     labels = sorted(
-        config.label
-        for config in apps.get_app_configs()
-        if config.label in owners and config.label != "django_access" and not _declares_own(config)
+        config.label for config in apps.get_app_configs() if config.label in owners and config.label != "django_access"
     )
     if not labels:
         return []
     return [
         checks.Info(
-            f"{len(labels)} module(s) own admin routes but declare no access rules of their own: {', '.join(labels)}",
-            hint="Declare access_areas and access_route_rules on the module's AppConfig (django_access "
-            "docs/module-authors.md).",
+            f"{len(labels)} module(s) own admin routes still mapped by the access defaults: {', '.join(labels)}",
+            hint="Set access_area on the views (or declare access_route_rules) and declare access_areas on the "
+            "module's AppConfig (django_access docs/module-authors.md).",
             id="django_access.I001",
         )
     ]
 
 
-def _declares_own(config: AppConfig) -> bool:
-    return any(getattr(config, name, None) is not None for name in registry.OWN_DECLARATIONS)
+@checks.register("entirius_config")
+def view_areas_are_valid(app_configs=None, **kwargs) -> list[checks.CheckMessage]:
+    """A view's ``access_area`` must name a catalogue area (``E007``), its ``access_levels`` known methods and levels
+    the area offers (``E008``), and its route must be an admin route the gate acts on (``W003``)."""
+    try:
+        entries = route_map.unique_entries()
+        known = {item.key: item.levels for item in registry.areas()}
+    except TypeError:
+        return []
+    return [message for info, callback in entries for message in _view_messages(info, callback, known)]
+
+
+def _view_messages(info: route_map.RouteInfo, callback, known: dict) -> list[checks.CheckMessage]:
+    area = route_map.view_attribute(callback, route_map.AREA_ATTR)
+    levels = route_map.view_attribute(callback, route_map.LEVELS_ATTR)
+    messages = [] if levels is None else _level_errors(info, levels, known)
+    if area is None:
+        return messages
+    if not isinstance(area, str) or (area != STAFF_BASELINE and area not in known):
+        messages.append(checks.Error(f"{info.route}: access_area {area!r} is not an area", id="django_access.E007"))
+    if not info.admin:
+        messages.append(
+            checks.Warning(f"{info.route}: access_area on a route outside the admin set", id="django_access.W003")
+        )
+    return messages
+
+
+def _level_errors(info: route_map.RouteInfo, levels: object, known: dict) -> list[checks.Error]:
+    if not isinstance(levels, dict):
+        return [checks.Error(f"{info.route}: access_levels must be a dict", id="django_access.E008")]
+    offered = known.get(info.area, ()) if isinstance(info.area, str) else ()
+    problems = [
+        f"{method}: {level}"
+        for method, level in levels.items()
+        if str(method).upper() not in HTTP_METHODS or level not in (READ, WRITE) or level not in offered
+    ]
+    if not problems:
+        return []
+    message = f"{info.route}: access_levels for area {info.area!r} not offered: {', '.join(problems)}"
+    return [checks.Error(message, id="django_access.E008")]
+
+
+@checks.register("entirius_config", deploy=True)
+def enforce_has_no_unmapped_routes(app_configs=None, **kwargs) -> list[checks.CheckMessage]:
+    """``check --deploy``: an enforcing gate refuses every unmapped admin route to everyone but superusers."""
+    if gate.mode() != ENFORCE:
+        return []
+    try:
+        unmapped = route_map.unmapped_admin([info for info, _ in route_map.unique_entries()])
+    except TypeError:
+        return []
+    if not unmapped:
+        return []
+    return [
+        checks.Error(
+            f"{len(unmapped)} admin route(s) without an access area while the gate enforces: "
+            f"{', '.join(unmapped[:UNMAPPED_SHOWN])}",
+            hint="run manage.py access_routes --unmapped; deploy with ACCESS_GATE_MODE=observe until the report is "
+            "clean",
+            id="django_access.E011",
+        )
+    ]

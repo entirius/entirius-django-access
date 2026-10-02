@@ -9,6 +9,8 @@ a service that has not installed the app yet.
 The route key is the exact string Django puts in ``ResolverMatch.route``; ``walk()`` rebuilds it for every pattern.
 Admin set = path test ∪ view-permission test ∪ the exceptions in ``catalogue.defaults``. A route rule applies only to
 the routes of its own module; framework routes (Django admin, DRF router roots, OpenAPI) match ``FRAMEWORK_RULES`` only.
+Area precedence: the view's ``access_area`` → the owner's ``AppConfig`` rules → the access defaults (``area_source``);
+the view's ``access_levels`` win per method over ``METHOD_OVERRIDES``; ``AREA_OVERRIDES`` still apply on top.
 """
 
 import functools
@@ -51,6 +53,11 @@ ADMIN_PATH_RE = re.compile(r"(?:^|/)admin/|^api-admin/")
 DJANGO = "django"
 FRAMEWORK_PACKAGES = frozenset({"rest_framework", DJANGO, "drf_spectacular"})
 AUDIENCE_KEY, AUDIENCE_WEBHOOK, AUDIENCE_CUSTOMER, AUDIENCE_PUBLIC = "key", "webhook", "customer", "public"
+# Where a route's area comes from (``RouteInfo.area_source``; None = no area).
+VIEW, APP, DEFAULT, FRAMEWORK = "view", "app", "default", "framework"
+AREA_SOURCES = (VIEW, APP, DEFAULT, FRAMEWORK)
+AREA_ATTR, LEVELS_ATTR = "access_area", "access_levels"
+RULES_DECLARATION = "access_route_rules"
 
 _cache: dict[str, "RouteInfo"] = {}
 
@@ -65,6 +72,7 @@ class RouteInfo:
     method_areas: dict[str, str] = field(default_factory=dict)
     self_auth: bool = False
     auth: tuple[str, ...] = ()
+    area_source: str | None = None
 
 
 def reset() -> None:
@@ -98,26 +106,47 @@ def classify(route: str, callback: Callable) -> RouteInfo:
 
 def _classify(route: str, callback: Callable) -> RouteInfo:
     path = route.removeprefix("^")
-    owner, rule = _owner_and_rule(path, callback)
+    owner, rule, source = _owner_and_rule(path, callback)
+    if (view_area := view_attribute(callback, AREA_ATTR)) is not None:
+        area, source = view_area, VIEW
+    else:
+        area, source = (rule.area, source) if rule else (None, None)
     return RouteInfo(
         route=route,
         owner=owner,
         admin=_is_admin(path, callback),
-        area=rule.area if rule else None,
-        method_levels=_per_method(METHOD_OVERRIDES, "level", path),
+        area=area,
+        method_levels={**_per_method(METHOD_OVERRIDES, "level", path), **_view_levels(callback)},
         method_areas=_per_method(AREA_OVERRIDES, "area", path),
         self_auth=_self_auth(path, callback),
         auth=tuple(_dotted(item) for item in _authentication_classes(callback)),
+        area_source=source,
     )
 
 
-def _owner_and_rule(path: str, callback: Callable) -> tuple[str, RouteRule | None]:
-    """The owner and its first matching rule; a framework route takes the module of its ``FRAMEWORK_RULES`` match."""
+def view_attribute(callback: Callable, name: str) -> object:
+    """``name`` set on the callback (a decorated function view), else on its DRF ``cls`` / Django ``view_class``."""
+    holders = (callback, getattr(callback, "cls", None), getattr(callback, "view_class", None))
+    return next((value for holder in holders if (value := getattr(holder, name, None)) is not None), None)
+
+
+def _view_levels(callback: Callable) -> dict[str, str]:
+    """The view's ``access_levels`` by upper-case method; a malformed value is left to check ``E008``."""
+    levels = view_attribute(callback, LEVELS_ATTR)
+    if not isinstance(levels, dict):
+        return {}
+    return {str(method).upper(): level for method, level in levels.items()}
+
+
+def _owner_and_rule(path: str, callback: Callable) -> tuple[str, RouteRule | None, str]:
+    """The owner, its first matching rule and the rule's source; a framework route takes the module of its
+    ``FRAMEWORK_RULES`` match."""
     owner = DJANGO if _is_django_admin_site(path, callback) else _owner(callback)
     if owner in FRAMEWORK_PACKAGES:
         rule = _first_match(FRAMEWORK_RULES, path)
-        return (rule.module if rule else owner), rule
-    return owner, _first_match((item for item in registry.route_rules() if item.module == owner), path)
+        return (rule.module if rule else owner), rule, FRAMEWORK
+    source = APP if owner in registry.declaring_labels(RULES_DECLARATION) else DEFAULT
+    return owner, _first_match((item for item in registry.route_rules() if item.module == owner), path), source
 
 
 def _first_match(rules, path: str) -> RouteRule | None:
@@ -253,12 +282,41 @@ def audit_routes(out: TextIO, json_path: str | None = None) -> int:
     entries = unique_entries()
     infos = [info for info, _ in entries]
     summary = _summary(infos)
-    unmapped = [info.route for info in infos if info.admin and info.area is None]
+    unmapped = unmapped_admin(infos)
     foreign = foreign_rule_matches(infos)
     _print_audit(out, summary, unmapped, foreign)
+    _print_sources(out, infos)
     if json_path:
         _write_json(json_path, entries, summary, unmapped, foreign)
     return 1 if unmapped or foreign else 0
+
+
+def audit_unmapped(out: TextIO, json_path: str | None = None) -> int:
+    """The upgrade preflight: every admin route without an area with its owner and methods; 1 when any exists."""
+    entries = unique_entries()
+    infos = [info for info, _ in entries]
+    unmapped = [(info, callback) for info, callback in entries if info.admin and info.area is None]
+    for info, callback in unmapped:
+        out.write(f"UNMAPPED {info.route}\towner={info.owner}\tmethods={','.join(handler_methods(callback))}\n")
+    if not unmapped:
+        out.write("no unmapped admin routes\n")
+    if json_path:
+        _write_json(json_path, entries, _summary(infos), unmapped_admin(infos), foreign_rule_matches(infos))
+    return 1 if unmapped else 0
+
+
+def unmapped_admin(infos: list[RouteInfo]) -> list[str]:
+    return [info.route for info in infos if info.admin and info.area is None]
+
+
+def handler_methods(callback: Callable) -> list[str]:
+    """The HTTP methods the view handles (``OPTIONS`` left out — every view answers it); ``*`` for a function view."""
+    if actions := getattr(callback, "actions", None):
+        return sorted(method.upper() for method in actions)
+    view = getattr(callback, "cls", None) or getattr(callback, "view_class", None)
+    if view is None:
+        return ["*"]
+    return sorted(name.upper() for name in view.http_method_names if name != "options" and hasattr(view, name))
 
 
 def unique_entries(urlconf: str | None = None) -> list[tuple[RouteInfo, Callable]]:
@@ -305,6 +363,11 @@ def _print_audit(out: TextIO, summary: dict[str, dict[str, int]], unmapped: list
     out.write(f"route audit: {'FAILED' if unmapped or foreign else 'OK'}\n")
 
 
+def _print_sources(out: TextIO, infos: list[RouteInfo]) -> None:
+    counts = {source: sum(info.admin and info.area_source == source for info in infos) for source in AREA_SOURCES}
+    out.write("admin area sources: " + ", ".join(f"{source} {count}" for source, count in counts.items()) + "\n")
+
+
 def _write_json(path: str, entries: list, summary: dict, unmapped: list[str], foreign: list[dict]) -> None:
     infos = [info for info, _ in entries]
     report = {
@@ -326,6 +389,7 @@ def _admin_entry(info: RouteInfo) -> dict:
         "route": info.route,
         "owner": info.owner,
         "area": info.area,
+        "area_source": info.area_source,
         "method_areas": info.method_areas,
         "self_auth": info.self_auth,
         "auth": info.auth,

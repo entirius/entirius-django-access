@@ -34,7 +34,9 @@ def test_a_module_on_the_defaults_passes_until_it_requires_its_own():
     assert_routes_covered("django_checkout", urlconf=URLCONF)
     assert failure("django_checkout", require_own=True) == (
         "django_checkout: admin routes not covered by its own rules:\n"
-        "django_checkout: defaults (declare access_areas and access_route_rules on its AppConfig)"
+        "api/checkout/v2/admin/<str:channel_idx>/orders/ [GET]: defaults "
+        "(set access_area on the view or declare access_route_rules)\n"
+        "django_checkout: defaults (declare access_areas on its AppConfig)"
     )
 
 
@@ -72,10 +74,10 @@ def test_an_app_label_that_is_not_installed_raises():
 
 
 @override_settings(ROOT_URLCONF=URLCONF)
-def test_i001_lists_exactly_the_route_owning_apps_without_declarations():
+def test_i001_lists_exactly_the_apps_with_default_sourced_routes():
     [message] = modules_declare_own_rules()
     assert message.id == "django_access.I001"
-    assert message.msg.endswith(": django_checkout, django_widgets")
+    assert message.msg.endswith(": django_checkout")  # widgets has no area at all: access_routes --unmapped, E011
     assert "module-authors.md" in message.hint
 
 

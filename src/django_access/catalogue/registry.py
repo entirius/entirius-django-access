@@ -17,9 +17,6 @@ from django_access.catalogue.areas import ACCESS_MANAGE, DEFAULT_AREAS, WRITE, A
 from django_access.catalogue.defaults import DEFAULT_RULES, RouteRule
 from django_access.catalogue.scopes import DEFAULT_SCOPES, TokenScope
 
-# The declarations that move a module's route coverage off the defaults (token scopes are a separate concern).
-OWN_DECLARATIONS = ("access_areas", "access_route_rules")
-
 
 @dataclasses.dataclass(frozen=True)
 class Catalogue:
@@ -69,9 +66,16 @@ def _areas_by_key() -> dict[str, Area]:
     return {item.key: item for item in catalogue().areas}
 
 
+@functools.cache
+def declaring_labels(attr: str) -> frozenset[str]:
+    """The labels of the installed apps that declare ``attr`` (an empty list counts) — their own replaces the defaults."""
+    return frozenset(config.label for config in apps.get_app_configs() if getattr(config, attr, None) is not None)
+
+
 def reset() -> None:
     catalogue.cache_clear()
     _areas_by_key.cache_clear()
+    declaring_labels.cache_clear()
 
 
 def areas() -> tuple[Area, ...]:
