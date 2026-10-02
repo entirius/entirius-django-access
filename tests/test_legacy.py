@@ -98,6 +98,16 @@ def test_a_row_without_a_channel_is_skipped_and_reported(legacy_row, model):
     assert report.sources[model].skipped == [f"{model}#{row.pk}"]
 
 
+@pytest.mark.parametrize(
+    ("model", "fields"),
+    [("django_vault.APIKey", {"key": ""}), ("django_contact_forms.APIKey", {"channel": "emporium", "scope": "other"})],
+)
+def test_an_empty_value_or_an_unknown_scope_is_skipped(legacy_row, model, fields):
+    row = legacy_row(model, **fields)
+    assert legacy.import_legacy_keys().sources[model].skipped == [f"{model}#{row.pk}"]
+    assert not ApiToken.objects.exists()
+
+
 def test_the_agreements_setting_is_imported_when_set(settings, db):
     settings.AGREEMENTS_API_KEY = "a" * 40
     report = legacy.import_legacy_keys()
@@ -168,8 +178,8 @@ def test_command_prints_counts_and_with_report_the_ids(legacy_row):
     out = StringIO()
     call_command("access_import_legacy_keys", "--report", stdout=out)
     lines = out.getvalue().splitlines()
-    assert "django_returns.APIKey: imported 0, present 0, skipped 0, unpinned 0, short 0, mixed 0" in lines
-    vault = lines.index("django_vault.APIKey: imported 1, present 0, skipped 0, unpinned 0, short 0, mixed 0")
+    assert "django_returns.APIKey: imported 0, present 0, skipped 0, unpinned 0, short 0, mixed 0, stale 0" in lines
+    vault = lines.index("django_vault.APIKey: imported 1, present 0, skipped 0, unpinned 0, short 0, mixed 0, stale 0")
     assert lines[vault + 1] == f"  imported: django_vault.APIKey#{row.pk}"
     assert row.key not in out.getvalue()
 

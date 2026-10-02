@@ -4,7 +4,8 @@
 """`manage.py access_import_legacy_keys [--dry-run] [--report] [--check]` — the legacy key import on demand.
 
 Prints counts per source (and ``legacy_source`` ids with ``--report`` / ``--check``) — never a key or a hash.
-``--check`` writes nothing and exits 1 while a legacy key is not imported, a mixed secret exists or a source fails:
+``--check`` writes nothing and exits 1 while a legacy key is not imported, a mixed secret exists, an imported token
+does not serve a row added later (``stale``) or a source fails:
 the deploy step between ``migrate`` and traffic.
 """
 
@@ -12,7 +13,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from django_access.services import legacy
 
-KINDS = ("imported", "present", "skipped", "unpinned", "short", "mixed")
+KINDS = ("imported", "present", "skipped", "unpinned", "short", "mixed", "stale")
 
 
 def _labels(check: bool) -> dict[str, str]:
@@ -61,9 +62,14 @@ class Command(BaseCommand):
             self._check(result)
 
     def _check(self, result: legacy.LegacyReport) -> None:
-        missing, mixed, failed = result.total("imported"), len(result.mixed), len(result.failed)
-        if missing or mixed or failed:
+        missing, stale, mixed, failed = (
+            result.total("imported"),
+            result.total("stale"),
+            len(result.mixed),
+            len(result.failed),
+        )
+        if missing or stale or mixed or failed:
             raise CommandError(
-                f"Legacy keys not ready: {missing} not imported, {mixed} mixed, {failed} failed source(s)"
+                f"Legacy keys not ready: {missing} not imported, {stale} stale, {mixed} mixed, {failed} failed source(s)"
             )
         self.stdout.write("Legacy keys OK: every legacy key is present as a token.")

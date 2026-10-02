@@ -101,6 +101,29 @@ def test_check_fails_on_one_unimported_row_and_writes_nothing(legacy_row):
     assert ApiToken.objects.count() == 1
 
 
+@pytest.mark.parametrize(
+    ("model", "fields"),
+    [(STOREFRONT, {"channel": "outlet"}), ("django_contact_forms.APIKey", {"channel": "emporium"})],
+)
+def test_a_row_the_existing_token_does_not_serve_is_stale_and_fails_check(legacy_row, model, fields):
+    """The secret is copied to another channel or another source after the import: the token is never widened."""
+    first = legacy_row(STOREFRONT, channel="emporium")
+    legacy.import_legacy_keys()
+    late = legacy_row(model, key=first.key, **fields)
+    report = legacy.import_legacy_keys()
+    assert f"{model}#{late.pk}" in report.sources[model].stale
+    assert token_of(first.key).scopes == ["checkout.storefront"] and token_of(first.key).channel_idx == "emporium"
+    _, error = run("access_import_legacy_keys", "--check")
+    assert error is not None and "stale" in str(error)
+
+
+def test_check_fails_on_a_failing_source(legacy_row, monkeypatch):
+    legacy.import_legacy_keys()
+    monkeypatch.setattr(legacy, "_rows", lambda model, source: 1 / 0)
+    out, error = run("access_import_legacy_keys", "--check")
+    assert error is not None and "FAILED" in out
+
+
 def test_check_fails_on_an_unimported_agreements_setting(settings, db):
     settings.AGREEMENTS_API_KEY = secrets.token_hex(32)
     _, error = run("access_import_legacy_keys", "--check")

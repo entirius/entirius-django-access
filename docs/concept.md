@@ -87,7 +87,7 @@ shown once. The database keeps its SHA-256 (`key_hash`, unique), `prefix` (12 ch
 
 ## Legacy keys
 
-Seven modules kept plaintext keys in their own tables, agreements in a setting. django-access imports them as
+Six modules kept plaintext keys in seven tables of their own, agreements in a setting. django-access imports them as
 tokens **with the same secret**, so every caller keeps working the day a module switches to `verify_api_key`.
 
 | Source | Scope | Pin |
@@ -103,8 +103,8 @@ tokens **with the same secret**, so every caller keeps working the day a module 
 
 Rules: one application per module (`Legacy keys: <app_label>`); `legacy=True`, `legacy_source` =
 `<app>.<Model>#<pk>`; expiry = import time + `ACCESS_LEGACY_KEY_TTL_DAYS` (90), never extended by a re-run. A row
-without a channel authenticates nothing today, so it is skipped. A secret on several channels becomes one unpinned
-token. A secret found in a publishable and a secret source is **not imported** (`mixed`) — a key that ships to
+without a channel authenticates nothing today, so it is skipped. A secret on several channels (or in a channel source
+and a channel-less one) becomes one unpinned token, valid on every channel — reported `unpinned`. A secret found in a publishable and a secret source is **not imported** (`mixed`) — a key that ships to
 browsers never gets erase, returns, reviews or vault power. A secret under 32 characters shows no character
 (`prefix "legacy"`, empty `last_four`).
 

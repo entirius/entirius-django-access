@@ -44,7 +44,11 @@ where it is enforced.
 - **Values are secrets; the report holds ids.** Never log, print or audit a legacy value or its hash. Exceptions
   are logged by class: an `IntegrityError` message carries the `key_hash`.
 - **Idempotent by `key_hash`.** An existing token is never changed — no expiry extension, no added scope, no
-  revival. A row that later shares a secret with an imported token stays covered by that token's scopes only.
+  revival. A row that later reuses an imported secret on another scope or channel is `stale` and fails `--check`.
+- **Shared secrets widen.** One secret on several channels becomes one unpinned token (plan decision): review the
+  `unpinned` lines of the first import, above all for erase keys.
+- **A secret shared across modules lands in one application** — the first source's module (`Legacy keys: <label>`)
+  — with the union of the scopes.
 - **Sources are looked up by app label** (`apps.get_model`), so the fake modules in `tests/legacy_apps/` stand in
   for the real ones.
 - **A null-channel row of a channel source is skipped** — it authenticates nothing today, and an unpinned token

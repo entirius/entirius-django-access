@@ -9,7 +9,7 @@ Install-time facts (apps, middleware, settings, deploy order) are in `install.md
 
 | Command | Flags | What it does |
 |---|---|---|
-| `access_import_legacy_keys` | `--dry-run`, `--report`, `--check` | imports the legacy keys (the same as `post_migrate`) and prints counts per source; `--report` adds the `legacy_source` ids; `--check` writes nothing and exits 1 while a key is missing, a secret is `mixed` or a source fails |
+| `access_import_legacy_keys` | `--dry-run`, `--report`, `--check` | imports the legacy keys (the same as `post_migrate`) and prints counts per source; `--report` adds the `legacy_source` ids; `--check` writes nothing and exits 1 while a key is missing, a secret is `mixed` or `stale`, or a source fails |
 | `access_purge_legacy_keys` | `--dry-run`, `--force` | deletes the plaintext legacy rows whose token's window is over; exits 1 when a row is still inside the window |
 | `access_token` | `create`, `rotate`, `revoke`, `list` | tokens from the command line; `create` / `rotate` print the raw value once, alone on stdout |
 | `access_routes` | `--check`, `--json PATH` | the route audit: admin routes per module, unmapped and foreign-rule matches |
@@ -29,7 +29,8 @@ Report outcomes per source:
 | `imported` | a token was created (under `--check`: `missing`, not imported yet) |
 | `present` | a token with that hash exists — left as it is, its expiry untouched |
 | `skipped` | the row authenticates nothing today (no channel, empty value, unknown scope) |
-| `unpinned` | the secret was found on several channels; one unpinned token holds it |
+| `unpinned` | the secret was found on several channels, or in a channel source and a channel-less one; one unpinned token holds it and works on **every** channel |
+| `stale` | a token with that hash exists but does not serve the row (another scope or channel added later); the token is never widened — `--check` fails |
 | `short` | under 32 characters; the token shows `legacy…` |
 | `mixed` | found in a publishable and a secret source; **no token** |
 
@@ -39,8 +40,9 @@ A `mixed` secret prints `MIXED legacy secret in <ids> — not imported, rotate b
 publishable token for the browser caller and a secret one for the server caller (`access_token create` or the API),
 switch both callers, delete the old rows in Django admin of the key module, run `--check` again.
 
-A legacy row added after the import (a new channel key in the module's admin) is imported by the next `migrate` or
-`access_import_legacy_keys`; `--check` shows it as `missing` until then.
+A legacy row added after the import with a new secret is imported by the next `migrate` or
+`access_import_legacy_keys`; `--check` shows it as `missing` until then. A row added later that reuses an imported
+secret on another channel or scope is `stale`: issue that caller its own token and delete the row.
 
 ## The 90-day window
 
@@ -63,7 +65,8 @@ After the window the legacy token answers like any expired token — `verify_api
 - `--force` deletes both of the last two;
 - `--dry-run` deletes nothing and prints the same lists.
 
-Idempotent — a second run finds nothing. One `legacy.purge` audit row per run that deleted something (count, ids,
+Idempotent — a second run deletes nothing new and writes no audit row (refused and `not_imported` rows are listed
+again). One `legacy.purge` audit row per run that deleted something (count, ids,
 `force`). The agreements setting cannot be deleted by code: past the window the command prints
 `remove AGREEMENTS_API_KEY from settings_local`.
 

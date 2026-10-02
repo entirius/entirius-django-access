@@ -80,6 +80,7 @@ class SourceReport:
     unpinned: list[str] = field(default_factory=list)
     short: list[str] = field(default_factory=list)
     mixed: list[str] = field(default_factory=list)
+    stale: list[str] = field(default_factory=list)
     failed: bool = False
 
 
@@ -225,9 +226,17 @@ def _create_token(group: list[LegacyKey], scopes: list[str], now: datetime) -> N
     )
 
 
+def _covers(token: ApiToken, group: list[LegacyKey]) -> bool:
+    """The existing token serves every row: all their scopes, and unpinned or pinned to their one channel."""
+    channels = {key.channel_idx for key in group}
+    pinned_right = token.channel_idx is None or channels == {token.channel_idx}
+    return {key.scope for key in group} <= set(token.scopes) and pinned_right
+
+
 def _store(group: list[LegacyKey], scopes: list[str], run: _Run) -> None:
-    if ApiToken.objects.filter(key_hash=hash_key(group[0].value)).exists():
-        run.report.add("present", group)
+    """``present`` leaves the token as it is; ``stale`` = a row added later that the token does not serve."""
+    if token := ApiToken.objects.filter(key_hash=hash_key(group[0].value)).first():
+        run.report.add("present" if _covers(token, group) else "stale", group)
         return
     if not run.dry_run:
         try:
@@ -313,7 +322,8 @@ def _purge_source(model: type[models.Model], source: Source, purge: _Purge) -> N
 
 
 def _purge_agreements(purge: _Purge) -> None:
-    """The setting cannot be deleted by code: name it once its token's window is over (or with ``force``)."""
+    """The setting cannot be deleted by code: name it once its token's window is over or revoked (or, for an imported
+    setting, with ``force``)."""
     if not (value := getattr(settings, "AGREEMENTS_API_KEY", "")):
         return
     token = _tokens_by_hash([value]).get(hash_key(value))
