@@ -94,4 +94,9 @@ urlpatterns = [
     path("api-admin/contentdb/<str:version>/", include(router.urls)),
     path("api/returns/attachments/order_return/<uuid:pk>", owned("django_returns", download)),
     path("api-admin/accounts/<str:version>/<str:channel_idx>/customer/delete", owned("django_accounts", download)),
+    # starts with the agreements.subscribe scope route but is not it
+    path(
+        "api/agreements/v2/<str:channel_idx>/newsletter/subscribe/confirm/",
+        owned("django_agreements", PublicView).as_view(),
+    ),
 ]

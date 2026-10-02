@@ -7,7 +7,22 @@
 docs and OpenAPI, not matching rules.
 """
 
+import re
 from dataclasses import dataclass
+
+_PIECES = re.compile(r"(\{[^/}]+\}|/\*\*)")
+
+
+def _piece(piece: str) -> str:
+    if piece == "/**":
+        return "(?:/.*)?"
+    return "[^/]+" if piece.startswith("{") else re.escape(piece)
+
+
+def route_regex(route: str) -> str:
+    """A ``routes`` pattern as a regex for ``fullmatch``: ``{name}`` → one segment, ``/**`` → the rest of the path or
+    nothing, the trailing slash optional."""
+    return "".join(map(_piece, _PIECES.split(route.rstrip("/")))) + "/?"
 
 
 @dataclass(frozen=True)

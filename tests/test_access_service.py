@@ -1,6 +1,8 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
+from types import SimpleNamespace
+
 import pytest
 
 from django_access.catalogue import registry
@@ -160,3 +162,8 @@ def test_unusable_superuser_does_not_count(flags, admin_grant, make_user, system
     make_user(is_superuser=True, **flags)
     with pytest.raises(AccessLockout):
         access_service.revoke_grant(admin_grant, system)
+
+
+def test_a_long_username_is_cut_to_the_audit_label():
+    user = SimpleNamespace(get_username=lambda: "u" * 200)
+    assert Actor(user).label == "u" * 150

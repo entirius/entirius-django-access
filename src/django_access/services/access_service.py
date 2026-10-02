@@ -25,6 +25,7 @@ from django_access.models import AuditAction, AuditEntry, Grant, Role, RolePermi
 from django_access.services.permissions import ADMINISTRATOR, MANAGE_ACCESS_PERMISSION, bump_version
 
 SYSTEM_LABEL = "system"
+ACTOR_LABEL_LENGTH = AuditEntry._meta.get_field("actor_label").max_length
 _EDITABLE_ROLE_FIELDS = frozenset({"name", "description", "permissions"})
 
 
@@ -37,7 +38,8 @@ class Actor:
 
     @property
     def label(self) -> str:
-        return self.user.get_username() if self.user else SYSTEM_LABEL
+        """Cut to ``AuditEntry.actor_label``: a longer username of a custom user model must not fail the audit insert."""
+        return (self.user.get_username() if self.user else SYSTEM_LABEL)[:ACTOR_LABEL_LENGTH]
 
 
 @dataclass(frozen=True)

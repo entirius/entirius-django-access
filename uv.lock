@@ -338,7 +338,7 @@ test = [
 requires-dist = [
     { name = "dj-database-url", marker = "extra == 'test'", specifier = ">=2.0" },
     { name = "django", specifier = ">=5.1" },
-    { name = "djangorestframework", specifier = ">=3.14" },
+    { name = "djangorestframework", specifier = ">=3.15.2" },
     { name = "djangorestframework-simplejwt", specifier = ">=5.3" },
     { name = "drf-spectacular", specifier = ">=0.27" },
     { name = "entirius-django-utils", specifier = ">=2.2.0" },

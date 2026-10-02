@@ -207,6 +207,7 @@ def test_report_fields(tmp_path):
     assert audiences == {
         "api/faq/v2/questions/": "public",
         "api-admin/accounts/<str:version>/<str:channel_idx>/customer/delete": "key",
+        "api/agreements/v2/<str:channel_idx>/newsletter/subscribe/confirm/": "public",
     }
     public = next(entry for entry in data["non_admin"] if entry["route"] == "api/faq/v2/questions/")
     assert (public["owner"], public["permissions"]) == ("django_faq", ["AllowAny"])

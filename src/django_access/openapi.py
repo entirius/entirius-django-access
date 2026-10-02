@@ -12,26 +12,15 @@ Wire it in ``SPECTACULAR_SETTINGS["POSTPROCESSING_HOOKS"]`` after drf-spectacula
 import re
 
 from django_access.catalogue import registry
+from django_access.catalogue.scopes import route_regex
 
 SCHEME_NAME = "ApiKeyAuth"
 API_KEY_SCHEME = {"type": "apiKey", "in": "header", "name": "X-API-KEY"}
-_PIECES = re.compile(r"(\{[^/}]+\}|/\*\*)")
-
-
-def _piece(piece: str) -> str:
-    if piece == "/**":
-        return "(?:/.*)?"
-    return "[^/]+" if piece.startswith("{") else re.escape(piece)
-
-
-def _pattern(route: str) -> str:
-    """A scope route as a regex: ``{name}`` → one segment, ``/**`` → the rest of the path or nothing, the trailing slash optional."""
-    return "".join(map(_piece, _PIECES.split(route.rstrip("/")))) + "/?"
 
 
 def key_route_matcher() -> re.Pattern:
     routes = {route for scope in registry.scopes() for route in scope.routes}
-    return re.compile("|".join(f"(?:{_pattern(route)})" for route in sorted(routes)) or "(?!)")
+    return re.compile("|".join(f"(?:{route_regex(route)})" for route in sorted(routes)) or "(?!)")
 
 
 def _with_key(security: list[dict] | None) -> list[dict]:

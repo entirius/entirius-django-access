@@ -32,6 +32,7 @@ from django_access.catalogue.defaults import (
     SELF_AUTH_ROUTES,
     RouteRule,
 )
+from django_access.catalogue.scopes import route_regex
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 ADMIN_PERMISSION_NAMES = frozenset({"IsAdminUser", "IsSuperUser"})
@@ -354,7 +355,7 @@ def _permission_name(item: object) -> str:
 
 def _audience(path: str, permissions: tuple) -> str:
     """Who a non-admin route serves: token-scope route → key, webhook, an authentication-requiring permission → customer."""
-    if any(pattern.match(path) for pattern in _scope_patterns()):
+    if any(pattern.fullmatch(path.removesuffix("$")) for pattern in _scope_patterns()):
         return AUDIENCE_KEY
     if "webhook" in path:
         return AUDIENCE_WEBHOOK
@@ -364,9 +365,4 @@ def _audience(path: str, permissions: tuple) -> str:
 @functools.cache
 def _scope_patterns() -> tuple[re.Pattern, ...]:
     """The token scopes' doc patterns (``/api/x/{channel_idx}/carts/**``) as regexes over route strings."""
-    return tuple(_scope_regex(route) for scope in registry.scopes() for route in scope.routes)
-
-
-def _scope_regex(doc_route: str) -> re.Pattern:
-    parts = re.split(r"(\{[^}]+\}|\*\*)", doc_route.lstrip("/"))
-    return re.compile("".join("[^/]+" if p.startswith("{") else ".*" if p == "**" else re.escape(p) for p in parts))
+    return tuple(re.compile(route_regex(route.lstrip("/"))) for scope in registry.scopes() for route in scope.routes)

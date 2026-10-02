@@ -34,6 +34,7 @@ SAMPLES = {
     "api-admin/contentdb/<str:version>/<drf_format_suffix:format>": "/api-admin/contentdb/v1/.json",
     "api/returns/attachments/order_return/<uuid:pk>": "/api/returns/attachments/order_return/0b6c8a52-3f0e-4a59-9d3e-2f1f1b5c9d11",
     "api-admin/accounts/<str:version>/<str:channel_idx>/customer/delete": "/api-admin/accounts/v1/shop/customer/delete",
+    "api/agreements/v2/<str:channel_idx>/newsletter/subscribe/confirm/": "/api/agreements/v2/shop/newsletter/subscribe/confirm/",
 }
 
 
@@ -201,7 +202,7 @@ def test_audit_lists_unmapped_admin_routes(tmp_path):
     assert audit_routes(out, str(report)) == 1
     data = json.loads(report.read_text())
     assert data["unmapped_admin"] == ["api/qms/v2/stock/"]
-    assert (data["routes"], data["admin_routes"]) == (14, 12)
+    assert (data["routes"], data["admin_routes"]) == (15, 12)
     assert data["modules"]["tests"] == {"routes": 1, "admin": 1, "mapped": 0, "unmapped": 1}
     assert data["modules"]["django_contentdb"] == {"routes": 6, "admin": 6, "mapped": 6, "unmapped": 0}
     assert data["foreign_rule_matches"] == []

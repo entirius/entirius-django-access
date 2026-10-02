@@ -121,6 +121,8 @@ def test_last_used_is_written_once_per_interval(issue, key_request, clock, setti
         tokens.verify_api_key(key_request(HTTP_X_API_KEY=raw), STOREFRONT)
     assert updates(queries) == 1
     first_use = clock.now
+    token.refresh_from_db()
+    assert token.last_used_at == first_use
     clock.advance(seconds=301)
     tokens.verify_api_key(key_request(HTTP_X_API_KEY=raw), STOREFRONT)
     token.refresh_from_db()
@@ -142,6 +144,16 @@ def test_rotate_copies_the_token_and_shortens_the_old_one(issue, system, clock):
     assert token.expires_at == clock.now + timedelta(hours=24)
     assert successor.expires_at == clock.now + timedelta(days=10)
     assert RAW_FORMAT.fullmatch(new_raw) and tokens.hash_key(new_raw) != tokens.hash_key(raw)
+
+
+def test_rotate_of_an_expired_token_yields_a_live_successor(issue, system, clock, key_request):
+    """Documented in ``docs/gotchas.md``: rotate refuses revoked tokens only; the expired one stays expired."""
+    token, _ = issue(expires_at=clock.now + timedelta(days=1))
+    clock.advance(days=2)
+    successor, raw = tokens.rotate_token(token, actor=system, overlap_hours=24)
+    token.refresh_from_db()
+    assert token.expires_at < clock.now
+    assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=raw), STOREFRONT) == successor
 
 
 def test_rotate_keeps_an_earlier_expiry(issue, system, clock):
