@@ -1,6 +1,6 @@
 ---
 title: Operations
-description: Day 2 — the legacy key import and its check, rotation, revocation, the 90-day window and the purge, the lockout guard, the route audit.
+description: Day 2 — the legacy key import and its check, legacy key lifetime, report, expiry and purge, rotation, revocation, the lockout guard, the route audit.
 ---
 
 Install-time facts (apps, middleware, settings, deploy order) are in `install.md`.
@@ -10,9 +10,10 @@ Install-time facts (apps, middleware, settings, deploy order) are in `install.md
 | Command | Flags | What it does |
 |---|---|---|
 | `access_import_legacy_keys` | `--dry-run`, `--report`, `--check` | imports the legacy keys (the same as `post_migrate`) and prints counts per source; `--report` adds the `legacy_source` ids; `--check` writes nothing and exits 1 while a key is missing, a secret is `mixed` or `stale`, or a source fails |
-| `access_purge_legacy_keys` | `--dry-run`, `--force` | deletes the plaintext legacy rows whose token's window is over; exits 1 when a row is still inside the window |
-| `access_token` | `create`, `rotate`, `revoke`, `list` | tokens from the command line; `create` / `rotate` print the raw value once, alone on stdout |
-| `access_routes` | `--check`, `--json PATH` | the route audit: admin routes per module, unmapped and foreign-rule matches |
+| `access_legacy_report` | `--json PATH`, `--module LABEL` | one row per legacy token: source, scopes, channel, created, last used, expiry, state |
+| `access_purge_legacy_keys` | `--yes`, `--force`, `--recent-days N`, `--dry-run` | lists (default) or with `--yes` deletes the plaintext rows of imported legacy keys; exits 1 when a key used within `N` (30) days is refused |
+| `access_token` | `create`, `rotate`, `revoke`, `expire`, `list` | tokens from the command line; `create` / `rotate` print the raw value once, alone on stdout; `expire <id> --at YYYY-MM-DD` / `--clear` |
+| `access_routes` | `--check`, `--unmapped`, `--json PATH` | the route audit: admin routes per module, area sources, unmapped and foreign-rule matches; `--unmapped` is the upgrade preflight (`upgrade.md`) |
 
 None of them prints a raw legacy value or a `key_hash` — only counts and `legacy_source` ids
 (`django_checkout.APIKey#3`, `settings.AGREEMENTS_API_KEY`).
@@ -49,31 +50,33 @@ A secret shared by rows of two modules (say `django_checkout.APIKey` and `django
 `legacy_source` lists both modules' ids. Deactivating that application or revoking that token stops the other
 module's caller too — give each caller its own token first.
 
-## The 90-day window
+## Legacy keys: lifetime, report, expiry, purge
 
-Every imported key expires `ACCESS_LEGACY_KEY_TTL_DAYS` after its import, and a re-run never extends it. During the
-window:
+Imported legacy keys never expire by themselves — rotation is each team's policy. A legacy token keeps working until
+somebody revokes, rotates or expires it; the key modules never fall back to their old tables.
 
-1. List the legacy tokens: `access_token list` (`legacy` application names) or the token API (`legacy: true`).
-2. Issue each integrator a new token with the same scope and pin; they switch.
-3. Revoke the legacy token once the caller is gone (`access_token revoke <id>`).
-
-After the window the legacy token answers like any expired token — `verify_api_key` returns `None`.
+- **Report** — `access_legacy_report` lists every legacy token sorted by source: who still calls with which key, when
+  it was last used (`never`), its expiry (`none`) and state. `--module django_checkout` narrows it, `--json PATH`
+  writes the rows. `prefix…last_four` only (`legacy…` for a short secret).
+- **Expiry** — a team sets or clears one per token: `access_token expire <id> --at 2027-06-30` / `--clear`, or
+  `POST tokens/<id>/expiry/` (`api.md`). Any future date or none for legacy and publishable tokens; an issued secret
+  token keeps the 365-day cap. A past date is refused — revoke instead. One `token.expiry` audit row each.
+- **Move a caller off a legacy key** — issue a new token with the same scope and pin, switch the caller, revoke the
+  legacy token (`access_token revoke <id>`).
 
 ## Purge
 
-`access_purge_legacy_keys` deletes the plaintext rows from the module tables:
+`access_purge_legacy_keys` deletes the plaintext rows of imported keys from the module tables, on demand:
 
-- a row whose token is past its window or revoked → deleted;
-- a row whose token is still inside the window → **refused**: kept, listed, exit 1;
+- without `--yes` it only lists what it would delete (`--dry-run` is the same);
+- a row whose token was used within `--recent-days` (30) and is still active → **refused**: kept, listed with its last
+  use, exit 1 — that row is the only way back for a key in use if access is ever removed;
 - a row never imported (no channel, `mixed`) → kept and listed as `not_imported`;
-- `--force` deletes both of the last two;
-- `--dry-run` deletes nothing and prints the same lists.
+- `--force` deletes both of the last two.
 
-Idempotent — a second run deletes nothing new and writes no audit row (refused and `not_imported` rows are listed
-again). One `legacy.purge` audit row per run that deleted something (count, ids,
-`force`). The agreements setting cannot be deleted by code: past the window the command prints
-`remove AGREEMENTS_API_KEY from settings_local`.
+Idempotent — a second run deletes nothing new and writes no audit row. One `legacy.purge` audit row per run that
+deleted something (count, ids, `force`, `recent_days`). The agreements setting cannot be deleted by code: the command
+prints `remove AGREEMENTS_API_KEY from settings_local` once the key is imported and not in use.
 
 The purge is final: removing the app afterwards cannot bring the legacy keys back (`install.md` § Rollback), and
 backups taken before it still hold the plaintext — expire them on the backup schedule.
@@ -98,7 +101,8 @@ then revoke the old grant. A lost last manager is recovered with `createsuperuse
 | Signal | Where |
 |---|---|
 | Refusals in `observe` mode | logger `django_access.gate` |
-| Admin route without an area | `UNMAPPED_ROUTE` 403 + error log; `access_routes --check` |
+| Admin route without an area | `UNMAPPED_ROUTE` 403 + error log; `access_routes --unmapped`; `check --deploy` (`E011`) |
+| Who still uses legacy keys | `access_legacy_report` |
 | Superuser writes | `gate.bypass` audit rows (status included) |
 | Legacy import result | logger `django_access.legacy` after `migrate`; `--check` in the deploy |
 | Audit IPs | correct only with `NUM_PROXIES` set to the real proxy depth (`install.md` § Production hardening) |

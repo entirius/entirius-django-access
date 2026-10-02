@@ -690,6 +690,51 @@ paths:
           description: No response body
         '404':
           description: No response body
+  /api/access/v2/admin/tokens/{id}/expiry/:
+    post:
+      operationId: admin_tokens_expiry_create
+      description: Audited `token.expiry`. Legacy keys never expire by themselves;
+        a team sets or clears it here.
+      summary: Set or clear a token's expiry
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Access tokens
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenExpiryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenExpiryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenExpiryRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+        '409':
+          description: No response body
   /api/access/v2/admin/tokens/{id}/revoke/:
     post:
       operationId: admin_tokens_revoke_create
@@ -1757,6 +1802,23 @@ components:
       required:
       - scopes
       title: TokenCreateRequest
+      type: object
+    TokenExpiryRequest:
+      additionalProperties: false
+      properties:
+        expires_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          description: 'The new expiry (in the future: else 400 `EXPIRY_IN_PAST`),
+            or null to clear it. Legacy and publishable tokens take any future date
+            or null; an issued secret token keeps the 365-day cap (`EXPIRY_REQUIRED`
+            / `EXPIRY_TOO_LONG`). A revoked token → 409.'
+          title: Expires At
+      required:
+      - expires_at
+      title: TokenExpiryRequest
       type: object
     TokenListResponse:
       properties:

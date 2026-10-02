@@ -58,6 +58,7 @@ grant → 409.
 | POST | `admin/applications/<id>/tokens/` | `scopes` (required), `name`, `channel_idx`, `expires_at` (aware, future) | 201 token row + `raw` |
 | POST | `admin/tokens/<id>/rotate/` | `overlap_hours` (0–168, default 24), `expires_at` | 201 successor + `raw`; revoked → 409 |
 | POST | `admin/tokens/<id>/revoke/` | — | 200; already revoked → 200, no second audit row |
+| POST | `admin/tokens/<id>/expiry/` | `expires_at` (aware datetime, or `null` to clear; required) | 200 token row; revoked → 409; audited `token.expiry` |
 
 Token row: `id, name, prefix, last_four, scopes, channel_idx, expires_at, last_used_at, revoked_at, legacy,
 legacy_source, state` (`active` | `expired` | `revoked` — the token's own state; check the application's
@@ -68,7 +69,9 @@ legacy_source, state` (`active` | `expired` | `revoked` — the token's own stat
 ever carries `key_hash`.
 
 Token errors (400, v2 envelope): unknown or mixed scopes (`non_field_errors`); a secret scope without `expires_at`
-→ `issue: EXPIRY_REQUIRED`, more than 365 days ahead → `EXPIRY_TOO_LONG` (both on `field: expires_at`).
+→ `issue: EXPIRY_REQUIRED`, more than 365 days ahead → `EXPIRY_TOO_LONG` (both on `field: expires_at`). The expiry
+endpoint: a past date → `EXPIRY_IN_PAST`; legacy and publishable tokens take any future date or `null`, an issued
+secret token keeps both rules above.
 
 ## Errors
 

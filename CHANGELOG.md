@@ -91,19 +91,29 @@
 - Legacy keys (`services.legacy`): `import_legacy_keys(dry_run=, now=)` imports the seven module key tables
   (accounts/checkout `APIAdminKey`, checkout and contact-forms `APIKey` pinned to their channel, returns, reviews and
   vault `APIKey`) and `AGREEMENTS_API_KEY` as tokens with the same secret — one `Legacy keys: <app_label>`
-  application per module, `legacy=True`, `legacy_source` `<app>.<Model>#<pk>`, expiry = import +
-  `ACCESS_LEGACY_KEY_TTL_DAYS` (90). Idempotent by `key_hash`: an existing token is never changed (no expiry
-  extension, no revival). A secret on several channels → one unpinned token; a row added later that the existing token does not serve →
+  application per module, `legacy=True`, `legacy_source` `<app>.<Model>#<pk>`, no expiry (D28: legacy keys never
+  expire by themselves; the setting `ACCESS_LEGACY_KEY_TTL_DAYS` of earlier 0.1.0 builds is gone — 0.1.0 is
+  unreleased). Idempotent by `key_hash`: an existing token is never changed (no revival). A secret on several channels → one unpinned token; a row added later that the existing token does not serve →
   `stale`; a secret in a publishable and a secret
   source → not imported (`mixed`); a secret under 32 characters → `prefix "legacy"`, empty `last_four`; a row
   without a channel → skipped. Runs on `post_migrate` (errors logged by class, `migrate` never fails); one
   `legacy.import` audit row per run that imported something.
 - `manage.py access_import_legacy_keys [--dry-run] [--report] [--check]`: counts and `legacy_source` ids only, never
   a value or a hash; `--check` exits 1 while a key is not imported, a secret is `mixed` or `stale`, or a source fails.
-- `purge_legacy_sources` + `manage.py access_purge_legacy_keys [--dry-run] [--force]`: deletes the plaintext legacy
-  rows whose token's window is over or that was revoked; in-window rows are refused (exit 1) unless `--force`, which
-  also deletes never-imported rows; idempotent; one `legacy.purge` audit row per run that deleted something; names
-  `AGREEMENTS_API_KEY` for removal from the settings once its window is over.
+- `purge_legacy_sources(PurgeOptions)` + `manage.py access_purge_legacy_keys [--yes] [--force] [--recent-days N]`:
+  deletes the plaintext rows of imported legacy keys on demand, no time gate; without `--yes` it only lists
+  (`--dry-run` kept as an alias); a key used within `N` (30) days is refused (exit 1, listed with its last use) unless
+  `--force`, which also deletes never-imported rows; idempotent; one `legacy.purge` audit row per run that deleted
+  something; names `AGREEMENTS_API_KEY` for removal from the settings.
+- Migration `0004_legacy_tokens_without_expiry`: clears the automatic import-time expiry of every legacy token no
+  `token.expiry` audit row names (reverse: no-op).
+- `tokens.set_token_expiry(token, expires_at=, actor=)`: set or clear one token's expiry, audited `token.expiry`
+  (token id, `legacy`, from, to). Legacy and publishable tokens take any future date or none; an issued secret token
+  keeps the 365-day cap (`EXPIRY_REQUIRED` / `EXPIRY_TOO_LONG`); a past date → `EXPIRY_IN_PAST`; a revoked token →
+  `AccessConflict`. API `POST admin/tokens/<id>/expiry/` (200 token row); CLI `access_token expire <id> --at
+  YYYY-MM-DD | --clear`.
+- `manage.py access_legacy_report [--json PATH] [--module LABEL]`: one row per legacy token (source, scopes, channel,
+  created, last used, expiry, state), never a value or a hash.
 - Module docs: `docs/concept.md`, `install.md` (wiring, settings, deploy order, rollback, production hardening),
   `api.md`, `operations.md`, `testing.md`, `gotchas.md`, `erd-config.yaml`, `openapi.yaml`.
 - Requires Django 5.1+ and DRF 3.15.2+.
@@ -112,10 +122,18 @@
   `pim.products` / `*.products`; `RouteInfo.method_areas`, `method_areas` in the route audit JSON. Administrator and
   Manager hold it, Editor does not. `E003` also fires on an area override naming an unknown area.
 - Module ownership: `django_access.testing.assert_routes_covered(app_label, urlconf=None, require_own=False)` for a
-  module's own test suite (fails on `unmapped`, `foreign_rule`, `unknown_area`, and `defaults` with `require_own`);
-  check `django_access.I001` (Info) lists installed apps that own admin routes but declare no `access_areas` /
-  `access_route_rules`; `route_map.unique_entries()` / `foreign_rule_matches()` public; guide
-  `docs/module-authors.md`.
+  module's own test suite (fails on `unmapped`, `foreign_rule`, `unknown_area`, and `defaults` with `require_own`:
+  no `access_areas` declared or an owned admin route still mapped by the access defaults); check `django_access.I001`
+  (Info) lists installed apps with an admin route mapped by the defaults; `route_map.unique_entries()` /
+  `foreign_rule_matches()` public; guide `docs/module-authors.md`.
+- Areas on views (D30): a view class or function may carry `access_area` and `access_levels` (method → `read` /
+  `write`); precedence view → the owner's `access_route_rules` → the access defaults; `access_levels` win per method
+  over `METHOD_OVERRIDES`, `AREA_OVERRIDES` still apply on top. `RouteInfo.area_source` (`view` | `app` | `default` |
+  `framework` | None), in the route audit JSON and output. Checks `E007` (unknown view area), `E008` (bad
+  `access_levels`), `W003` (view area outside the admin set).
+- Upgrade preflight (D29): `manage.py access_routes --unmapped` (route, owner, methods; exit 1 when any) and the
+  deploy check `django_access.E011` (`check --deploy`: the gate enforces over unmapped admin routes); guide
+  `docs/upgrade.md`.
 
 ## 0.1.0 (unreleased)
 

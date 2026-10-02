@@ -1,6 +1,6 @@
 ---
 title: Concept
-description: Areas, roles and grants, the admin gate, application tokens and the legacy key window — what django-access decides and why.
+description: Areas, roles and grants, the admin gate, application tokens and legacy keys — what django-access decides and why.
 ---
 
 django-access answers two questions for a Volkanos service: may this staff user call this admin route, and may this
@@ -110,14 +110,16 @@ tokens **with the same secret**, so every caller keeps working the day a module 
 
 Rules: one application per module (`Legacy keys: <app_label>`); `legacy=True`, `legacy_source` =
 `<app>.<Model>#<pk>` (comma-separated for a shared secret; past 255 characters the leading whole ids and `+N more`);
-a secret shared by two modules is one token under the first module's application (`operations.md`); expiry = import time + `ACCESS_LEGACY_KEY_TTL_DAYS` (90), never extended by a re-run. A row
+a secret shared by two modules is one token under the first module's application (`operations.md`); no expiry — a
+legacy key never expires by itself, and a re-run never changes an existing token. A row
 without a channel authenticates nothing today, so it is skipped. A secret on several channels (or in a channel source
 and a channel-less one) becomes one unpinned token, valid on every channel — reported `unpinned`. A secret found in a publishable and a secret source is **not imported** (`mixed`) — a key that ships to
 browsers never gets erase, returns, reviews or vault power. A secret under 32 characters shows no character
 (`prefix "legacy"`, empty `last_four`).
 
-The window is the migration period: integrators move to issued tokens, then `access_purge_legacy_keys` deletes the
-plaintext rows (`operations.md`).
+Rotation is each team's policy, not a deadline: a team sets or clears an expiry per token, `access_legacy_report`
+shows who still uses which key, and `access_purge_legacy_keys` deletes the plaintext rows on demand (`operations.md`).
+The 365-day cap of secret tokens governs issued tokens only; a rotated legacy secret's successor is an issued token.
 
 ## Audit
 

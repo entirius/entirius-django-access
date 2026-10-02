@@ -3,8 +3,8 @@ title: Install
 description: Service wiring — app, middleware, URLs, OpenAPI hook, settings, gate modes and the kill switch, deploy order and rollback.
 ---
 
-Read this once before `migrate`. Day-2 work (legacy keys, rotation, revocation, the purge, lockouts):
-`operations.md`.
+Read this once before `migrate`. Upgrading an installation that already runs: `upgrade.md` first. Day-2 work (legacy
+keys, rotation, revocation, the purge, lockouts): `operations.md`.
 
 ## Prerequisites
 
@@ -57,7 +57,6 @@ fails on any admin route without an area and on any rule matching another module
 | Setting | Default | Meaning |
 |---|---|---|
 | `ACCESS_GATE_MODE` | `"enforce"` | `enforce` refuses; `observe` logs refusals (`django_access.gate`) and lets through; `off` decides nothing. Any other value is enforced + `E010`; a non-`enforce` mode with `DEBUG=False` warns `W010` |
-| `ACCESS_LEGACY_KEY_TTL_DAYS` | `90` | lifetime of an imported legacy key, counted from its import |
 | `ACCESS_SECRET_TOKEN_MAX_TTL_DAYS` | `365` | a token with a secret scope must expire within this many days |
 | `ACCESS_TOKEN_LAST_USED_INTERVAL_S` | `300` | `last_used_at` is written at most once per token per interval |
 | `AGREEMENTS_API_KEY` | `""` | read by the legacy import only (agreements' own setting) |
@@ -84,7 +83,9 @@ module. Tokens and `verify_api_key` are not affected by the mode.
 ## Deploy order
 
 ```
-manage.py migrate                                  # 0001–0003; post_migrate imports the legacy keys
+manage.py access_routes --unmapped                 # exit 1 → stop, or deploy in observe (upgrade.md)
+manage.py check --deploy --fail-level ERROR        # E011: enforce over unmapped admin routes
+manage.py migrate                                  # 0001–0004; post_migrate imports the legacy keys
 manage.py access_import_legacy_keys --check        # exit 1 → stop: a key is not imported or mixed
 # only now: traffic to the new release
 ```

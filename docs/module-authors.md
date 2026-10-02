@@ -1,16 +1,39 @@
 ---
 title: Module authors
-description: How a module declares its own access areas and route rules, proves coverage in its own CI, and when it depends on entirius-django-access.
+description: How a module maps its admin routes to access areas — on the view, in the AppConfig — proves coverage in its own CI, and when it depends on entirius-django-access.
 ---
 
-Every new module and every new admin route declares its own areas and route rules on the module's `AppConfig` and
-proves the coverage in the module's own test suite. The 25 modules that owned admin routes before access existed still
-live on the access defaults (`catalogue/defaults.py`); each moves its rules into its own `AppConfig` at its next
-regular release. `manage.py check` shows who is left (`django_access.I001`).
+A module owns its access mapping: its areas in its `AppConfig`, the area of every admin route on the view that serves
+it. The 25 modules that owned admin routes before access existed still live on the access defaults
+(`catalogue/defaults.py`); each moves its mapping into its own code at its next regular release. `manage.py check`
+lists who is left (`django_access.I001`).
 
-## Declare
+## Areas on the view (the default for new code)
 
-Plain dicts on the `AppConfig` — no import of `django_access` needed:
+```python
+class QuestionViewSet(viewsets.ViewSet):
+    permission_classes = [IsAdminUser]
+    access_area = "faq.faq"
+    access_levels = {"POST": "read"}  # optional: a POST that only reads
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
+def export(request): ...
+
+
+export.access_area = "faq.export"  # after the decorators: the URL callback carries it
+```
+
+- `access_area` — an area key of the catalogue, or `staff.baseline` for routes every active staff user reaches.
+- `access_levels` — optional, HTTP method → `read` / `write`; replaces the default for that method (GET, HEAD,
+  OPTIONS read, the rest write) and the access module's per-method override for the route.
+- Works on DRF `APIView` / `ViewSet`, Django `View` and function views. The attribute never changes the owner, the
+  admin set or whether the view authenticates itself.
+
+## Areas in the AppConfig (always)
+
+Plain dicts — no import of `django_access` needed:
 
 ```python
 class FaqConfig(AppConfig):
@@ -19,40 +42,43 @@ class FaqConfig(AppConfig):
         {"key": "faq.faq", "label": "FAQ"},
         {"key": "faq.export", "label": "FAQ export", "levels": ("write",), "sensitive": ("pii",)},
     ]
-    access_route_rules = [
-        {"pattern": "api/faq/v2/admin/export/", "area": "faq.export"},
-        {"pattern": "api/faq/v2/admin/", "area": "faq.faq"},  # catch-all on the admin root, last
-    ]
 ```
 
 | Field | Meaning |
 |---|---|
-| area `key` | `<module>.<name>`, lowercase; the permission keys are `<key>:read` and `<key>:write` |
-| area `label` | English; the CMS translates by key |
-| area `levels` | `("read", "write")` (default), `("read",)` or `("write",)` |
-| area `sensitive` | flags among `pii`, `money`, `secret`, `ai_cost`, `config`, `destructive` |
-| rule `pattern` | regex, `re.match` against the full `ResolverMatch.route` (`api/faq/v2/admin/<int:pk>/`) — converters stay literal |
-| rule `area` | an area key, or `staff.baseline` for routes every active staff user reaches |
+| `key` | `<module>.<name>`, lowercase; the permission keys are `<key>:read` and `<key>:write` |
+| `label` | English; the CMS translates by key |
+| `levels` | `("read", "write")` (default), `("read",)` or `("write",)` |
+| `sensitive` | flags among `pii`, `money`, `secret`, `ai_cost`, `config`, `destructive` |
 
-The dataclass form works too (`django_access.catalogue.areas.Area`, `catalogue.defaults.RouteRule`) — it needs the
-import. `module` is always forced to the declaring app's label; do not set it. `access_token_scopes` follows the same
-rules for application-token scopes.
+`access_areas` replaces **all** default areas of the module — declare every area it needs; `[]` drops them.
+`access_token_scopes` follows the same rule for application-token scopes. `module` is forced to the app label.
+
+## Path rules (only where no view can be annotated)
+
+Django admin pages, third-party views and DRF router roots carry no attribute of yours. For those, rules in the
+`AppConfig`:
+
+```python
+    access_route_rules = [{"pattern": "api/faq/v2/admin/legacy/", "area": "faq.faq"}]
+```
+
+`pattern` is a regex, `re.match`ed against the full `ResolverMatch.route` (converters stay literal). First match
+wins, in declaration order; the list replaces every default rule of the module.
 
 ## Precedence
 
-- A declaration replaces **all** defaults of that kind for the app's own label — declare every area and every rule
-  the module needs, not the difference. `access_areas = []` drops the module's default areas.
-- Rules are first-match, in declaration order; put specific patterns before the catch-all on the admin root. The
-  module's rules take the position of its first default rule.
-- A rule applies only to the routes its module owns. The owner is the top-level package of the view's `__module__`
-  — it must equal the app label, so a view served from another package is not covered by your rules.
-- Framework routes (the Django admin site, DRF router roots, the OpenAPI views) match only the access module's
-  framework rules; a module cannot declare them.
-- Per-method level and area overrides (a POST that reads, a GET that exports PII, the SKU delete) stay in
-  `catalogue/defaults.py` — ask in the access module when a route needs one. Dropping an area such an override names
-  is an `E003` error.
-- Without any declaration the defaults apply; a route matched by neither is unmapped and the gate answers 403
-  `UNMAPPED_ROUTE` to everyone but superusers.
+1. The view's `access_area` (`area_source` `view`).
+2. The first matching rule of the owner's `access_route_rules` (`app`).
+3. The access defaults for that owner (`default`); framework routes take only the access module's framework rules
+   (`framework`).
+
+The owner is the top-level package of the view's `__module__` — it must equal the app label. Area overrides stay on
+top (the SKU delete needs `pim.product_delete` whatever the route's area). A route matched by nothing is unmapped: the
+gate answers 403 `UNMAPPED_ROUTE` to everyone but superusers. `access_routes` prints the source of every route.
+
+Checks: `E007` an `access_area` outside the catalogue, `E008` an unknown method or level in `access_levels` (or one
+the area does not offer), `W003` an `access_area` on a route outside the admin set (the gate ignores it).
 
 ## Test
 
@@ -66,30 +92,27 @@ def test_admin_routes_are_covered():
     assert_routes_covered("django_faq", require_own=True)
 ```
 
-It walks `ROOT_URLCONF` (or `urlconf="..."`) and raises `AssertionError` listing every admin route the module owns,
-its methods and the reason:
-
 | Reason | Meaning | Fix |
 |---|---|---|
-| `unmapped` | no rule of the module matches | add a rule (or a catch-all on the admin root) |
-| `foreign_rule` | a rule of another module also matches the route | narrow the other pattern — two owners for one path drift |
-| `unknown_area` | the matching rule names an area outside the catalogue | declare the area or fix the key |
-| `defaults` | `require_own=True` and the module declares no `access_areas` / `access_route_rules` | move the rules into the `AppConfig` |
+| `unmapped` | neither the view nor a rule gives the route an area | set `access_area` on the view |
+| `foreign_rule` | a rule of another module also matches the route | narrow the other pattern |
+| `unknown_area` | the route's area is outside the catalogue | declare the area or fix the key |
+| `defaults` | `require_own=True`: no `access_areas` declared, or a route still mapped by the access defaults | declare the areas; annotate the view |
 
-Plain `AssertionError`, no pytest import: it runs under pytest, `unittest` or `manage.py test`. Leave `require_own` off
-while the module still lives on the defaults. Admin routes are those under an `admin/` segment or `api-admin/`, plus
-views with an `IsAdminUser` / `IsSuperUser` permission class — the same set the gate guards.
+`require_own=True` passes when the app declares `access_areas` (an empty list counts) and every admin route it owns
+takes its area from a view attribute or its own rules. Leave it off while the module still lives on the defaults.
+Plain `AssertionError`, no pytest import. Admin routes are those under an `admin/` segment or `api-admin/`, plus
+views with an `IsAdminUser` / `IsSuperUser` permission class — the set the gate guards.
 
 ## Dependency
 
-Add `entirius-django-access` to the module's `pyproject.toml` dependencies once it declares rules: from then on the
-module's coverage test imports it, and every service running the module requires access anyway. A module that
-declares nothing needs no dependency. Pin the lower bound to the release that ships `django_access.testing`.
+Add `entirius-django-access` to the module's `pyproject.toml` once the coverage test imports it; every service running
+the module requires access anyway. The attributes and `access_areas` need no import. Pin the lower bound to the
+release that ships `django_access.testing`.
 
 ## No second check
 
-The gate is the only permission decision. A module adds no permission class of its own that re-checks areas or
-roles: two checks drift, and the one nobody updates refuses (or worse, allows) on its own. Keep the view's existing
-`IsAdminUser` / `IsAuthenticated` — it is what makes the route admin and lets the view answer anonymous callers
-itself. Object-level rules that are not about areas (a channel the user may not see, a record's state) stay in the
-module's services.
+The gate is the only permission decision. A module adds no permission class of its own that re-checks areas or roles:
+two checks drift. Keep the view's existing `IsAdminUser` / `IsAuthenticated` — it makes the route admin and lets the
+view answer anonymous callers itself. Object-level rules (a channel the user may not see, a record's state) stay in
+the module's services.
