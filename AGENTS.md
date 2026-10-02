@@ -33,12 +33,14 @@ Same rule applies to PR descriptions: no `Generated with [Claude Code]` footer.
 ## Architecture
 
 Read first: `docs/install.md` (host) · `docs/api.md` (caller) · `docs/concept.md` (why) · `docs/operations.md`
-(day 2) · `docs/gotchas.md` (before editing) · `docs/testing.md`. This section is the map; it explains nothing twice.
+(day 2) · `docs/gotchas.md` (before editing) · `docs/testing.md` · `docs/module-authors.md` (other modules). This
+section is the map; it explains nothing twice.
 
 ```
 src/django_access/
 ├── apps.py (checks, cache signals, post_migrate legacy import)  middleware.py (AccessGateMiddleware)
-│   openapi.py (ApiKeyAuth hook)  checks.py (E001–E006, E010, W002, W010)  signals.py  exceptions.py  urls.py
+│   openapi.py (ApiKeyAuth hook)  checks.py (E001–E006, E010, W002, W010, I001)  signals.py  exceptions.py  urls.py
+│   testing.py (assert_routes_covered, for module test suites)
 ├── catalogue/    areas (49)  scopes (9 token scopes)  defaults (route rules, method and area overrides)  registry
 ├── models/       role (Role, RolePermission)  grant  audit (AuditEntry, AuditAction)  application  token (ApiToken)
 ├── services/     access_service (every role/grant mutation + audit + lockout guard)  permissions (cached)
@@ -61,6 +63,7 @@ the module's own auth → `verify_api_key(request, scope, channel_idx)` → one 
 | Endpoint, body, response, errors; `verify_api_key` contract | `docs/api.md`; `docs/openapi.yaml` |
 | Legacy import report, `--check`, purge, rotation, revocation, lockout | `docs/operations.md` |
 | Which test covers what; fake legacy modules | `docs/testing.md` |
+| A module declaring its own areas/rules, `assert_routes_covered`, the dependency | `docs/module-authors.md` |
 | ERD groupings | `docs/erd-config.yaml` |
 
 ## Testing

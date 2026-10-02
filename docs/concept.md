@@ -13,7 +13,7 @@ never grants.
 The catalogue (`catalogue/`) is code, not data: 49 **areas** (`pim.products`, `checkout.orders`, …, `access.manage`,
 `platform.devtools`), each offering `read` and usually `write`. A permission key is `<area>:read` or `<area>:write`;
 write implies read. A module can replace its own defaults with `AppConfig.access_areas`,
-`access_route_rules` and `access_token_scopes` — only for its own app label.
+`access_route_rules` and `access_token_scopes` — only for its own app label (`module-authors.md`).
 
 **Deleting a SKU** is its own write-only area, `pim.product_delete` (flag `destructive`): editing the catalogue
 (`pim.products`) does not include it. It guards the PIM product `DELETE` (`api/pim/v2/admin/` and the legacy

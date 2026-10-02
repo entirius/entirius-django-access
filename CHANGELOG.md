@@ -111,6 +111,11 @@
   PIM product `DELETE` (both roots) and the atlas/suppliers `realproducts/merge-by-ean/` need it instead of
   `pim.products` / `*.products`; `RouteInfo.method_areas`, `method_areas` in the route audit JSON. Administrator and
   Manager hold it, Editor does not. `E003` also fires on an area override naming an unknown area.
+- Module ownership: `django_access.testing.assert_routes_covered(app_label, urlconf=None, require_own=False)` for a
+  module's own test suite (fails on `unmapped`, `foreign_rule`, `unknown_area`, and `defaults` with `require_own`);
+  check `django_access.I001` (Info) lists installed apps that own admin routes but declare no `access_areas` /
+  `access_route_rules`; `route_map.unique_entries()` / `foreign_rule_matches()` public; guide
+  `docs/module-authors.md`.
 
 ## 0.1.0 (unreleased)
 

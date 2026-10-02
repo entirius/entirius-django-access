@@ -20,6 +20,7 @@ names and key fields — the real modules are not installed here. The `legacy_ro
 |---|---|
 | `test_catalogue.py` / `test_registry.py` | areas, scopes, default rules, `AppConfig` overrides per label; checks `E001`–`E006` |
 | `test_checks.py` | `W002` (`E010`/`W010` are in `test_gate.py` and `security/test_modes.py`) |
+| `test_ownership.py` | `assert_routes_covered` per reason (`unmapped`, `foreign_rule`, `unknown_area`, `defaults`) on fixture apps (`faq_stub` declares, the checkout stub lives on the defaults, `widgets_stub` has neither; `ownership_urls.py`), `I001` |
 | `test_route_map.py` / `test_route_map_scoping.py` | classification, owner-scoped rules, `self_auth` per branch, Django admin rules, the route audit |
 | `test_permissions.py` / `test_access_service.py` / `test_migration_0002.py` | effective permissions and cache versions (every user flag, membership, cascaded grants), every mutation with its audit row, service field whitelists, lockout guard, reserved `access.manage`, grant targets, 0002 → Manager and its 0001 round trip |
 | `test_gate.py` | the gate decision table, modes, bypass audit |
