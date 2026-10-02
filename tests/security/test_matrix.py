@@ -1,110 +1,74 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""Gate matrix: principal × route class × GET/POST × mode through the full middleware chain.
-
-Outcomes: ``ok`` the view ran (200); ``view401``/``view403`` the view refused (v2 envelope without details);
-``gate401`` the gate's 401; an issue code = the gate's 403 with that issue. ``EXPECTED`` is the enforce answer; in
-``observe`` and ``off`` every gate refusal becomes what the view itself answers.
+"""Gate matrix: every principal × route class × method × mode through the full middleware chain, one assertion set
+per cell: status, issue, whether the recording view ran, the bypass audit row. The expected cell is the README contract
+(``tests.security.contract``). Below the matrix: plan 04's targeted principal tests on ``tests.gate_urls``.
 """
 
 import base64
-from datetime import timedelta
+import secrets
 
 import pytest
 from django.test import Client, override_settings
 from rest_framework_simplejwt.settings import api_settings as jwt_settings
-from rest_framework_simplejwt.tokens import AccessToken
 
 from django_access.models import AuditEntry
 from django_access.services import access_service
-from django_access.services.permissions import ADMINISTRATOR, EDITOR, MANAGER, VIEWER
+from django_access.services.permissions import MANAGER, VIEWER
 from tests import gate_urls as urls
+from tests.security.conftest import bearer
+from tests.security.contract import (
+    ACCESS_DENIED,
+    CASES,
+    METHODS,
+    MODES,
+    PRINCIPALS,
+    RAN,
+    ROUTES,
+    SAFE,
+    assert_answer,
+    expected,
+    expects_bypass_row,
+    gate_sees_user,
+)
 
 pytestmark = [pytest.mark.django_db, pytest.mark.urls("tests.gate_urls")]
-
-ROUTES = {
-    "admin": urls.ADMIN,
-    "export": urls.EXPORT,
-    "viewer": urls.VIEWER,
-    "baseline": urls.BASELINE,
-    "unmapped": urls.UNMAPPED,
-    "read_only": urls.READ_ONLY,
-    "public": urls.PUBLIC,
-}
-_NOBODY = "view401 view401 | view401 view401 | gate401 gate401 | view401 view401 | view401 view401 | view401 view401"
-_STAFF_ONLY = " | ".join(["STAFF_ONLY STAFF_ONLY"] * 6)
-_DENIED = "ACCESS_DENIED"
-_WRITER = f"ok ok | ok ok | ok ok | ok ok | UNMAPPED_ROUTE UNMAPPED_ROUTE | ok {_DENIED}"
-# GET POST per route, in ROUTES order without "public" (always ok ok).
-EXPECTED = {
-    "anonymous": _NOBODY,
-    "invalid_jwt": _NOBODY,
-    "expired_jwt": _NOBODY,
-    "inactive_staff": _NOBODY,
-    "customer": _STAFF_ONLY,
-    "staff_no_role": f"{_DENIED} {_DENIED} | {_DENIED} {_DENIED} | {_DENIED} {_DENIED} | ok ok | "
-    f"UNMAPPED_ROUTE UNMAPPED_ROUTE | {_DENIED} {_DENIED}",
-    "viewer": f"ok {_DENIED} | {_DENIED} {_DENIED} | ok {_DENIED} | ok ok | UNMAPPED_ROUTE UNMAPPED_ROUTE | ok {_DENIED}",
-    "editor": f"ok {_DENIED} | {_DENIED} {_DENIED} | ok ok | ok ok | UNMAPPED_ROUTE UNMAPPED_ROUTE | ok {_DENIED}",
-    "manager": _WRITER,
-    "administrator_group": _WRITER,
-    "superuser": "ok ok | ok ok | ok ok | ok ok | ok ok | ok ok",
-    "superuser_not_staff": "view403 view403 | view403 view403 | ok ok | view403 view403 | view403 view403 | "
-    "view403 view403",
-}
-CASES = [
-    (who, route, method, outcome)
-    for who, row in EXPECTED.items()
-    for route, pair in zip([r for r in ROUTES if r != "public"], row.split(" | "), strict=True)
-    for method, outcome in zip(("GET", "POST"), pair.split(), strict=True)
-] + [(who, "public", method, "ok") for who in EXPECTED for method in ("GET", "POST")]
+_DENIED = ACCESS_DENIED
 
 
-def bearer(user, **lifetime) -> dict:
-    token = AccessToken.for_user(user)
-    if lifetime:
-        token.set_exp(lifetime=timedelta(**lifetime))
-    return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+@pytest.mark.urls("tests.security.urls")
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize(("who", "route", "method"), CASES)
+def test_cell(client, principal, ran, who, route, method, mode):
+    headers, target = principal(who), ROUTES[route]
+    with override_settings(ACCESS_GATE_MODE=mode):
+        response = client.generic(method, target.path, **headers)
+    assert_answer(response, expected(PRINCIPALS[who], target, method, mode), ran, target.path, method)
+    rows = [
+        (row["method"], row["status"])
+        for row in AuditEntry.objects.filter(action="gate.bypass").values_list("detail", flat=True)
+    ]
+    assert rows == (
+        [(method, response.status_code)] if expects_bypass_row(PRINCIPALS[who], target, method, mode) else []
+    )
+    assert hasattr(response.wsgi_request, "_access_decision") is (mode != "off")
 
 
-@pytest.fixture
-def credentials(make_user, role, group, system):
-    """``credentials(name)`` → request headers of that principal."""
-
-    def granted(role_key: str) -> dict:
-        user = make_user()
-        access_service.grant_role(role(role_key), user=user, actor=system)
-        return bearer(user)
-
-    def inactive() -> dict:
-        user = make_user()
-        headers = bearer(user)
-        user.is_active = False
-        user.save()
-        return headers
-
-    def via_group() -> dict:
-        user = make_user()
-        user.groups.add(group)
-        access_service.grant_role(role(ADMINISTRATOR), group=group, actor=system)
-        return bearer(user)
-
-    builders = {
-        "anonymous": dict,
-        "invalid_jwt": lambda: {"HTTP_AUTHORIZATION": "Bearer not.a.token"},
-        "expired_jwt": lambda: bearer(make_user(), minutes=-1),
-        "inactive_staff": inactive,
-        "customer": lambda: bearer(make_user(is_staff=False)),
-        "staff_no_role": lambda: bearer(make_user()),
-        "viewer": lambda: granted(VIEWER),
-        "editor": lambda: granted(EDITOR),
-        "manager": lambda: granted(MANAGER),
-        "administrator_group": via_group,
-        "superuser": lambda: bearer(make_user(is_superuser=True)),
-        "superuser_not_staff": lambda: bearer(make_user(is_superuser=True, is_staff=False)),
-    }
-    return lambda name: builders[name]()
+def test_contract_states_the_readme_invariants():
+    """Viewer and Editor never reach a PII export; only a superuser reaches an unmapped route; a token-only request
+    is anonymous."""
+    export, download, unmapped = ROUTES["pii_export"], ROUTES["pii_download"], ROUTES["unmapped"]
+    for who in ("viewer", "editor"):
+        # OPTIONS on the DRF export answers metadata, never the export handler; the function download serves it
+        reached = [m for m in METHODS if m != "OPTIONS" and expected(PRINCIPALS[who], export, m, "enforce") == RAN]
+        reached += [m for m in METHODS if expected(PRINCIPALS[who], download, m, "enforce") == RAN]
+        assert reached == [], who
+    for name, who in PRINCIPALS.items():
+        reached = {expected(who, unmapped, m, "enforce") == RAN for m in METHODS}
+        assert reached == {who.superuser and gate_sees_user(who, unmapped) and who.staff}, name
+    assert PRINCIPALS["token_every_scope"] == PRINCIPALS["anonymous"]
+    assert set(SAFE) < set(METHODS)
 
 
 def assert_outcome(response, outcome: str) -> None:
@@ -120,35 +84,19 @@ def assert_outcome(response, outcome: str) -> None:
     assert [item["issue"] for item in body["details"]] == [issue]
 
 
-def view_answer(route: str, outcome: str) -> str:
-    """What the view answers when the gate lets a refused request through: the pim viewer serves anyone, the DRF
-    views' ``IsAdminUser`` refuses only non-staff (``STAFF_ONLY``)."""
-    if outcome not in ("gate401", "STAFF_ONLY", _DENIED, "UNMAPPED_ROUTE"):
-        return outcome
-    return "view403" if outcome == "STAFF_ONLY" and route != "viewer" else "ok"
-
-
-@pytest.mark.parametrize("mode", ["enforce", "observe", "off"])
-@pytest.mark.parametrize(("who", "route", "method", "outcome"), CASES)
-def test_matrix(client, credentials, who, route, method, outcome, mode):
-    with override_settings(ACCESS_GATE_MODE=mode):
-        response = client.generic(method, ROUTES[route], **credentials(who))
-    assert_outcome(response, outcome if mode == "enforce" else view_answer(route, outcome))
-    assert hasattr(response.wsgi_request, "_access_decision") is (mode != "off")
-
-
-def test_inactive_user_is_refused_even_when_the_authenticator_accepts_it(client, credentials, monkeypatch):
+def test_inactive_user_is_refused_even_when_the_authenticator_accepts_it(client, principal, monkeypatch):
     monkeypatch.setattr(jwt_settings, "CHECK_USER_IS_ACTIVE", False)
-    assert_outcome(client.get(urls.ADMIN, **credentials("inactive_staff")), "gate401")
+    assert_outcome(client.get(urls.ADMIN, **principal("inactive_staff")), "gate401")
 
 
 def test_default_auth_view_session_counts_basic_never(client, make_user, role, system):
     """A view on DRF's default Session + Basic: the session decides; Basic alone is anonymous → the gate's 401."""
     user = make_user()
-    user.set_password("pw-for-test")
+    password = secrets.token_urlsafe(16)
+    user.set_password(password)
     user.save()
     access_service.grant_role(role(VIEWER), user=user, actor=system)
-    basic = base64.b64encode(f"{user.username}:pw-for-test".encode()).decode()
+    basic = base64.b64encode(f"{user.username}:{password}".encode()).decode()
     assert_outcome(client.get(urls.DEFAULT_AUTH, HTTP_AUTHORIZATION=f"Basic {basic}"), "gate401")
     client.force_login(user)
     assert_outcome(client.get(urls.DEFAULT_AUTH), "ok")

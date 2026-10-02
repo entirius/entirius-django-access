@@ -30,6 +30,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_access.middleware.AccessGateMiddleware",
 ]
+APPEND_SLASH = True  # Django's default, as in the service: path fuzzing relies on the redirect
 ROOT_URLCONF = "tests.urls"
 TEMPLATES = [
     {

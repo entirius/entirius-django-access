@@ -17,7 +17,7 @@ from django_access.models import AuditEntry
 from django_access.services import access_service, gate
 from django_access.services.permissions import VIEWER
 from tests import gate_urls as urls
-from tests.security.test_matrix import bearer
+from tests.security.conftest import bearer
 
 pytestmark = [pytest.mark.django_db, pytest.mark.urls("tests.gate_urls")]
 
