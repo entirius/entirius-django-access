@@ -54,6 +54,17 @@
   `EXPIRY_TOO_LONG`); rotation keeps a secret token's lifetime within the cap.
 - `manage.py access_token create|rotate|revoke|list`; read-only Django admin for applications and tokens, no add,
   no `key_hash`.
+- `django_access.middleware.AccessGateMiddleware` (append after the authentication middleware) +
+  `services.gate.decide()`: acts only on the admin set (outside it one memoized `classify()`, no authentication,
+  cache or query); the principal is what the view's own JWT/session authenticators would see (a session never counts
+  on a JWT-only view; API-key headers are never read); anonymous callers reach only self-authenticating views, else
+  401 `NOT_AUTHENTICATED` + `WWW-Authenticate: Bearer realm="api"`; superuser passes, with one `gate.bypass` audit row
+  per write (GET PII exports included) written after the response with its status; non-staff → 403 `STAFF_ONLY`,
+  admin route without an area → 403 `UNMAPPED_ROUTE`, missing permission or a write on a read-only area → 403
+  `ACCESS_DENIED` (v2 envelope); an exception in the decision → the v2 500 envelope, view not run.
+- `ACCESS_GATE_MODE` = `enforce` (default) | `observe` (log refusals on `django_access.gate`, let through) | `off`;
+  any other value is enforced. System checks `django_access.E010` (invalid mode) and `W010` (not `enforce` with
+  `DEBUG=False`).
 - Requires Django 5.1+.
 
 ## 0.1.0 (unreleased)
