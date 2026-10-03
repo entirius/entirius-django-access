@@ -30,7 +30,7 @@ A superuser gets every area at its top level. A non-staff user gets `permissions
 
 | Method | Path | Body / params | Success |
 |---|---|---|---|
-| GET | `admin/catalogue/` | — | 200 `{modules [{module, areas [{key, label, levels, sensitive, assignable}]}], roles [built-in with computed permissions], scopes [{key, label, module, publishable, routes}]}` |
+| GET | `admin/catalogue/` | — | 200 `{modules [{module, areas [{key, label, levels, sensitive, assignable}]}], roles [built-in with computed permissions], scopes [{key, label, module, publishable, routes}], token_rotation_days}` (`ACCESS_TOKEN_ROTATION_DAYS`) |
 | GET | `admin/roles/` | paging | 200 built-in and custom roles with `grant_count` |
 | POST | `admin/roles/` | `key` (slug), `name`, `description`, `permissions` (`<area>:read\|write`) | 201 role with `permissions` |
 | GET / PATCH / DELETE | `admin/roles/<id>/` | PATCH: `name`, `description`, `permissions` (replaces the set) | 200 / 200 / 204 |
@@ -55,23 +55,23 @@ grant → 409.
 | POST | `admin/applications/` | `name`, `description` | 201; a name in use → 409 |
 | GET / PATCH | `admin/applications/<id>/` | PATCH: `name`, `description`, `is_active` (none, null or another field → 400) | 200; no DELETE (405) |
 | GET | `admin/applications/<id>/tokens/` | paging (newest first) | 200 token rows, never `raw` |
-| POST | `admin/applications/<id>/tokens/` | `scopes` (required), `name`, `channel_idx`, `expires_at` (aware, future) | 201 token row + `raw` |
-| POST | `admin/tokens/<id>/rotate/` | `overlap_hours` (0–168, default 24), `expires_at` | 201 successor + `raw`; revoked → 409 |
+| POST | `admin/applications/<id>/tokens/` | `scopes` (required), `name`, `channel_idx`, `expires_at` (aware, future, optional) | 201 token row + `raw` |
+| POST | `admin/tokens/<id>/rotate/` | `overlap_hours` (0–168, default 24), `expires_at` (default none) | 201 successor + `raw`; revoked → 409 |
 | POST | `admin/tokens/<id>/revoke/` | — | 200; already revoked → 200, no second audit row |
 | POST | `admin/tokens/<id>/expiry/` | `expires_at` (aware datetime, or `null` to clear; required) | 200 token row; revoked → 409; audited `token.expiry` |
 
 Token row: `id, name, prefix, last_four, scopes, channel_idx, expires_at, last_used_at, revoked_at, legacy,
-legacy_source, state` (`active` | `expired` | `revoked` — the token's own state; check the application's
-`is_active` next to it). A legacy row has `legacy: true`, a 6-character `prefix` (`legacy` with an empty
+legacy_source, state, age_days, rotation_due` (`state`: `active` | `expired` | `revoked` — the token's own state;
+check the application's `is_active` next to it; `age_days`: whole days since issue or import; `rotation_due`: active
+and at least `token_rotation_days` old — rotate it, nothing is refused). A legacy row has `legacy: true`, a 6-character `prefix` (`legacy` with an empty
 `last_four` for a short secret) and its `legacy_source` ids.
 
 `raw` is in the create and rotate responses only, with `Cache-Control: no-store` and `Pragma: no-cache`. No response
 ever carries `key_hash`.
 
-Token errors (400, v2 envelope): unknown or mixed scopes (`non_field_errors`); a secret scope without `expires_at`
-→ `issue: EXPIRY_REQUIRED`, more than 365 days ahead → `EXPIRY_TOO_LONG` (both on `field: expires_at`). The expiry
-endpoint: a past date → `EXPIRY_IN_PAST`; legacy and publishable tokens take any future date or `null`, an issued
-secret token keeps both rules above.
+Token errors (400, v2 envelope): unknown or mixed scopes (`non_field_errors`); a past `expires_at`. No token needs an
+expiry and none has a maximum (D31). The expiry endpoint: a past date → `issue: EXPIRY_IN_PAST` on
+`field: expires_at`; every token takes any future date or `null`.
 
 ## Errors
 

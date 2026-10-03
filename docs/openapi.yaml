@@ -1081,10 +1081,18 @@ components:
             $ref: '#/components/schemas/ScopeResponse'
           title: Scopes
           type: array
+        token_rotation_days:
+          description: '`ACCESS_TOKEN_ROTATION_DAYS`: a token this many days old is
+            `rotation_due` (0 = never).'
+          examples:
+          - 365
+          title: Token Rotation Days
+          type: integer
       required:
       - modules
       - roles
       - scopes
+      - token_rotation_days
       title: CatalogueResponse
       type: object
     GrantCreateRequest:
@@ -1603,7 +1611,8 @@ components:
           title: Module
           type: string
         publishable:
-          description: Reaches browsers by design; a secret scope's token must expire.
+          description: Reaches browsers by design; publishable and secret never share
+            a token.
           title: Publishable
           type: boolean
         routes:
@@ -1795,9 +1804,9 @@ components:
             type: string
           - type: 'null'
           default: null
-          description: 'When the token stops working; must be in the future. A token
-            with a secret scope must expire, at most 365 days ahead: none → 400 `EXPIRY_REQUIRED`,
-            later → 400 `EXPIRY_TOO_LONG`.'
+          description: 'When the token stops working, or null for never; must be in
+            the future. Optional for every scope and without a maximum: an old token
+            is flagged `rotation_due` instead (`ACCESS_TOKEN_ROTATION_DAYS`).'
           title: Expires At
       required:
       - scopes
@@ -1812,9 +1821,8 @@ components:
             type: string
           - type: 'null'
           description: 'The new expiry (in the future: else 400 `EXPIRY_IN_PAST`),
-            or null to clear it. Legacy and publishable tokens take any future date
-            or null; an issued secret token keeps the 365-day cap (`EXPIRY_REQUIRED`
-            / `EXPIRY_TOO_LONG`). A revoked token → 409.'
+            or null to clear it. Every token takes any future date or null. A revoked
+            token → 409.'
           title: Expires At
       required:
       - expires_at
@@ -1920,6 +1928,17 @@ components:
           description: The token's own state; an inactive application stops its active
             tokens too (`is_active`).
           title: State
+        age_days:
+          description: Whole days since the token was issued (or imported).
+          examples:
+          - 12
+          title: Age Days
+          type: integer
+        rotation_due:
+          description: 'Active and at least `token_rotation_days` old: rotate it.
+            A recommendation — nothing is refused.'
+          title: Rotation Due
+          type: boolean
       required:
       - id
       - name
@@ -1933,6 +1952,8 @@ components:
       - legacy
       - legacy_source
       - state
+      - age_days
+      - rotation_due
       title: TokenResponse
       type: object
     TokenRotateRequest:
@@ -1951,10 +1972,10 @@ components:
             type: string
           - type: 'null'
           default: null
-          description: 'Default: the old token''s lifetime from now. When the token
-            stops working; must be in the future. A token with a secret scope must
-            expire, at most 365 days ahead: none → 400 `EXPIRY_REQUIRED`, later →
-            400 `EXPIRY_TOO_LONG`.'
+          description: 'Default: none — the successor inherits no expiry. When the
+            token stops working, or null for never; must be in the future. Optional
+            for every scope and without a maximum: an old token is flagged `rotation_due`
+            instead (`ACCESS_TOKEN_ROTATION_DAYS`).'
           title: Expires At
       title: TokenRotateRequest
       type: object
@@ -2029,6 +2050,17 @@ components:
           description: The token's own state; an inactive application stops its active
             tokens too (`is_active`).
           title: State
+        age_days:
+          description: Whole days since the token was issued (or imported).
+          examples:
+          - 12
+          title: Age Days
+          type: integer
+        rotation_due:
+          description: 'Active and at least `token_rotation_days` old: rotate it.
+            A recommendation — nothing is refused.'
+          title: Rotation Due
+          type: boolean
         raw:
           description: The token value — in this response only; store it now, it is
             never shown again.
@@ -2049,6 +2081,8 @@ components:
       - legacy
       - legacy_source
       - state
+      - age_days
+      - rotation_due
       - raw
       title: TokenSecretResponse
       type: object

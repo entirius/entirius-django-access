@@ -31,7 +31,7 @@
   path ∪ an `IsAdminUser`/`IsSuperUser` permission class (DRF `&`/`|` composites walked) ∪ the munin health, returns
   download and pim viewer exceptions; the X-API-ADMIN-KEY erase routes are not admin. Route rules are owner-scoped
   (a rule applies only to its own module's routes); framework routes match `FRAMEWORK_RULES` only — the Django admin
-  site is `access.manage` (login, logout, jsi18n and password change on the staff baseline), the contentdb router root
+  site is `superuser.only` (login, logout, jsi18n and password change on the staff baseline), the contentdb router root
   `content.pages`, the OpenAPI views the staff baseline. `RouteInfo.self_auth` / `auth`: whether the view answers an
   anonymous caller itself (a DRF view on exactly SimpleJWT `JWTAuthentication` / DRF `SessionAuthentication` with a
   permission requiring a user, no `get_authenticators`/`get_permissions`/`check_permissions` override; or a view the
@@ -50,9 +50,13 @@
   hash; `None` for every failure (unknown, expired, revoked, inactive application, wrong or empty scopes, channel
   mismatch); values over 256 characters run no query; `last_used_at` by a conditional update at most once per
   `ACCESS_TOKEN_LAST_USED_INTERVAL_S` (300).
-- Scope rules: at least one catalogue scope; publishable and secret scopes never share a token; a token with a secret
-  scope must expire within `ACCESS_SECRET_TOKEN_MAX_TTL_DAYS` (365) — `TokenExpiryError` (`EXPIRY_REQUIRED` /
-  `EXPIRY_TOO_LONG`); rotation keeps a secret token's lifetime within the cap.
+- Scope rules: at least one catalogue scope; publishable and secret scopes never share a token.
+- Token lifetime (D31, replaces the D21 cap of earlier pre-releases — the secret-token maximum, its setting and its
+  two error codes are gone): an expiry is optional for every scope and has no maximum; a past one raises
+  `TokenExpiryError` (`EXPIRY_IN_PAST`); a rotated successor gets the given expiry or none. `ACCESS_TOKEN_ROTATION_DAYS`
+  (365; 0 = off), `tokens.token_age_days()` / `rotation_due()`: token rows (API), `access_token list` and
+  `access_legacy_report` show `age_days` and `rotation_due`, the catalogue `token_rotation_days`. Nothing is refused
+  for age.
 - `manage.py access_token create|rotate|revoke|list`; read-only Django admin for applications and tokens, no add,
   no `key_hash`.
 - `django_access.middleware.AccessGateMiddleware` (append after the authentication middleware) +
@@ -82,8 +86,8 @@
   `description`, `is_active`; no DELETE; a name in use → 409), `applications/<id>/tokens/` (list, issue),
   `tokens/<id>/rotate/` (`overlap_hours` 0–168, default 24; revoked → 409) and `tokens/<id>/revoke/` (idempotent, one
   audit row). The raw value is only in the issue and rotate responses (`Cache-Control: no-store`, `Pragma: no-cache`);
-  no response carries `key_hash`; token rows show `state` `active` | `expired` | `revoked`. Secret-scope expiry errors
-  → 400 `EXPIRY_REQUIRED` / `EXPIRY_TOO_LONG` on `expires_at`. `services.tokens.update_application` (field whitelist,
+  no response carries `key_hash`; token rows show `state` `active` | `expired` | `revoked`, `age_days` and
+  `rotation_due`. `services.tokens.update_application` (field whitelist,
   audited `application.update`) and `lifecycle_state`. The catalogue lists the token scopes.
 - `django_access.openapi.add_api_key_security`: drf-spectacular postprocessing hook adding the `ApiKeyAuth` scheme
   (`apiKey`, header `X-API-KEY`) and requiring it on every operation matching a token scope's routes, next to the
@@ -108,15 +112,19 @@
 - Migration `0004_legacy_tokens_without_expiry`: clears the automatic import-time expiry of every legacy token no
   `token.expiry` audit row names (reverse: no-op).
 - `tokens.set_token_expiry(token, expires_at=, actor=)`: set or clear one token's expiry, audited `token.expiry`
-  (token id, `legacy`, from, to). Legacy and publishable tokens take any future date or none; an issued secret token
-  keeps the 365-day cap (`EXPIRY_REQUIRED` / `EXPIRY_TOO_LONG`); a past date → `EXPIRY_IN_PAST`; a revoked token →
+  (token id, `legacy`, from, to). Every token takes any future date or none; a past date → `EXPIRY_IN_PAST`; a
+  revoked token →
   `AccessConflict`. API `POST admin/tokens/<id>/expiry/` (200 token row); CLI `access_token expire <id> --at
   YYYY-MM-DD | --clear`.
 - `manage.py access_legacy_report [--json PATH] [--module LABEL]`: one row per legacy token (source, scopes, channel,
-  created, last used, expiry, state), never a value or a hash.
+  created, last used, expiry, state, age in days, rotation due), never a value or a hash.
 - Module docs: `docs/concept.md`, `install.md` (wiring, settings, deploy order, rollback, production hardening),
   `api.md`, `operations.md`, `testing.md`, `gotchas.md`, `erd-config.yaml`, `openapi.yaml`.
 - Requires Django 5.1+ and DRF 3.15.2+.
+- Django admin superusers only (D32, replaces D17's `access.manage`): pseudo-area `superuser.only` (never grantable,
+  never in `me`, not a catalogue area; `E003`/`E004`/`E007` treat it like `staff.baseline`) for every `admin/` route
+  but the login pages; the gate answers every non-superuser staff user 403 `ACCESS_DENIED` (`superuser only`),
+  Administrators included; a superuser's writes keep their `gate.bypass` row.
 - Area `pim.product_delete` (write only, flag `destructive`, 49 areas): `catalogue.defaults.AREA_OVERRIDES` make the
   PIM product `DELETE` (both roots) and the atlas/suppliers `realproducts/merge-by-ean/` need it instead of
   `pim.products` / `*.products`; `RouteInfo.method_areas`, `method_areas` in the route audit JSON. Administrator and

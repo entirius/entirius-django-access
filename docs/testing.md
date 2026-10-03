@@ -28,6 +28,7 @@ names and key fields — the real modules are not installed here. The `legacy_ro
 | `test_gate.py` | the gate decision table, modes, bypass audit |
 | `test_product_delete.py` | `pim.product_delete`: built-in roles, both PIM roots, the RealProduct merge, media/file/link deletes, `me`, the audit report |
 | `test_tokens.py` / `test_access_token_command.py` | issue, rotate, revoke, verify, expiry rules, the CLI |
+| `test_token_rotation.py` | `age_days` / `rotation_due` (D31) in the service, API, CLI and legacy report; `token_rotation_days` in the catalogue |
 | `test_admin_api.py` / `test_me_api.py` / `test_token_api.py` | every endpoint: auth matrix, bodies, conflicts, whitelists |
 | `test_openapi.py` | `spectacular --validate --fail-on-warn`, the `ApiKeyAuth` hook |
 | `test_legacy.py` | every legacy source without expiry, idempotency, shared secrets, null-channel skip, the agreements setting, a failing source, dry run, the `post_migrate` receiver, the command |
@@ -39,7 +40,7 @@ Shared helpers (`bearer`, `bypass_rows`, the token API endpoints, the measured q
 
 | File | Covers |
 |---|---|
-| `test_matrix.py`, `test_auth_paths.py`, `test_paths.py`, `test_modes.py`, `test_failures.py`, `test_cost.py`, `test_bypass_audit.py`, `test_log_hygiene.py` | the gate: principal × route class × method × mode, authenticators the gate does not run, path mutations, fail-closed, zero cost outside the admin set |
+| `test_matrix.py`, `test_auth_paths.py`, `test_paths.py`, `test_modes.py`, `test_failures.py`, `test_cost.py`, `test_bypass_audit.py`, `test_log_hygiene.py` | the gate: principal × route class × method × mode, the Django admin for superusers only (D32), authenticators the gate does not run, path mutations, fail-closed, zero cost outside the admin set |
 | `test_tokens_lifecycle.py`, `test_tokens_lookup.py`, `test_tokens_hygiene.py`, `test_token_api.py` | token lifecycle, one query by hash, no raw value or hash in logs, audit, CLI or API |
 | `test_admin_api_*.py` | escalation, IDOR, leakage, audit, the lockout race |
 | `test_legacy.py` | short secrets, mixed secrets, `--check`, the purge (listing, `--yes`, recent use, revoked, `--force`, idempotency), an expiry a team set bites without revival, no value or hash in logs, output or audit |

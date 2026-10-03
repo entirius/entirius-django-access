@@ -24,6 +24,10 @@ write implies read. A module can replace its own defaults with `AppConfig.access
 **Staff baseline** — every active staff user, no grant needed: `me`, `catalogue`, regional reference lists,
 contentdb self-permission reads, the notifications inbox, the Django admin login/logout/password pages.
 
+**Superusers only** — the rest of the Django admin site (pseudo-area `superuser.only`, D32). The CMS replaced it for
+clients: no role opens it, Administrator included (403 `ACCESS_DENIED`, description `superuser only`). Like the staff
+baseline it is never grantable, never in `me` and not a catalogue area.
+
 ## Roles and grants
 
 | Role | Permissions (computed from the catalogue at run time) |
@@ -43,8 +47,8 @@ The **lockout guard** refuses any change (role update or delete, grant revoke) t
 active staff superuser or an Administrator holder. The whole transaction rolls back (`AccessLockout`, 409).
 
 **Upgrade default.** Migration `0002` grants **Manager** to every active non-superuser staff user on first adoption
-(one `grant.migrate` audit row each). Nobody gets Administrator: until a superuser grants it, access management,
-the Django admin and token issuing stay with superusers.
+(one `grant.migrate` audit row each). Nobody gets Administrator: until a superuser grants it, access management
+and token issuing stay with superusers. The Django admin site stays with superusers for good (D32).
 
 Permissions are cached per user under a version that every access change, group membership change and
 `is_staff`/`is_superuser`/`is_active` change bumps. With a per-process cache (LocMem) other processes see a change
@@ -64,6 +68,7 @@ package), area and method; rules apply only to their own module's routes.
 | superuser | passes; a write (any unsafe method on a route without an area too) leaves one `gate.bypass` audit row after the response; without `is_staff` the view's `IsAdminUser` / `IsStaffUser` refuses |
 | authenticated non-staff | 403 `STAFF_ONLY` |
 | staff, admin route without an area | 403 `UNMAPPED_ROUTE` + error log |
+| staff, Django admin page (`superuser.only`) | 403 `ACCESS_DENIED` (`superuser only`) — whatever the roles |
 | staff without the permission, or a write on a read-only area | 403 `ACCESS_DENIED` |
 | staff with the permission | passes |
 
@@ -83,14 +88,17 @@ shown once. The database keeps its SHA-256 (`key_hash`, unique), `prefix` (12 ch
 
 - **Scopes** (9): `checkout.storefront`, `contact_forms.submit`, `contact_forms.booking`, `agreements.subscribe`
   (publishable — they ship to browsers) and `checkout.erase`, `accounts.erase`, `returns.api`, `reviews.moderate`,
-  `vault.api` (secret). One token never mixes the two groups. A token with a secret scope must expire within
-  `ACCESS_SECRET_TOKEN_MAX_TTL_DAYS` (365).
+  `vault.api` (secret). One token never mixes the two groups.
+- **Lifetime** (D31): an expiry is optional for every scope and has no maximum; a past date is refused (revoke
+  instead). Every token shows its age (`age_days`) and `rotation_due` — active and at least
+  `ACCESS_TOKEN_ROTATION_DAYS` (365) old. A recommendation only: nothing is refused, logged or audited for age.
 - **Channel pin**: a pinned token passes only where the route's channel equals the pin. A pin on an erase token
   limits the URL channel, not the erase's reach — accounts and checkout erase by e-mail across channels.
 - `verify_api_key(request, scope, channel_idx=None)` reads `X-API-KEY` (alias `X-API-ADMIN-KEY`), runs one uncached
   query by hash and returns the token or `None` — one answer for unknown, expired, revoked, inactive application,
   wrong scope and channel mismatch. Revocation applies on the next request.
-- Rotation issues a successor and keeps the old token valid for an overlap (default 24 h).
+- Rotation issues a successor (no expiry unless one is given) and keeps the old token valid for an overlap
+  (default 24 h).
 
 ## Legacy keys
 
@@ -118,8 +126,8 @@ browsers never gets erase, returns, reviews or vault power. A secret under 32 ch
 (`prefix "legacy"`, empty `last_four`).
 
 Rotation is each team's policy, not a deadline: a team sets or clears an expiry per token, `access_legacy_report`
-shows who still uses which key, and `access_purge_legacy_keys` deletes the plaintext rows on demand (`operations.md`).
-The 365-day cap of secret tokens governs issued tokens only; a rotated legacy secret's successor is an issued token.
+shows who still uses which key and which is `rotation due` (legacy tokens count their age from the import), and
+`access_purge_legacy_keys` deletes the plaintext rows on demand (`operations.md`).
 
 ## Audit
 

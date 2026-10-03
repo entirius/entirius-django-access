@@ -46,8 +46,8 @@ urlpatterns.append(path("", include("django_access.urls")))
 ```
 
 `django_access.urls` mounts `api/access/v2/me/` and `api/access/v2/admin/…` (`api.md`). Keep the Django admin site
-at `admin/`: the route map puts that prefix in the admin set; a second `AdminSite` or another prefix stays outside
-the gate.
+at `admin/`: the route map puts that prefix in the admin set and opens it to superusers only (its login, logout and
+password pages to every active staff user); a second `AdminSite` or another prefix stays outside the gate.
 
 The gate classifies the whole resolver once per process. Run `manage.py access_routes --check` after wiring: it
 fails on any admin route without an area and on any rule matching another module's routes.
@@ -57,7 +57,7 @@ fails on any admin route without an area and on any rule matching another module
 | Setting | Default | Meaning |
 |---|---|---|
 | `ACCESS_GATE_MODE` | `"enforce"` | `enforce` refuses; `observe` logs refusals (`django_access.gate`) and lets through; `off` decides nothing. Any other value is enforced + `E010`; a non-`enforce` mode with `DEBUG=False` warns `W010` |
-| `ACCESS_SECRET_TOKEN_MAX_TTL_DAYS` | `365` | a token with a secret scope must expire within this many days |
+| `ACCESS_TOKEN_ROTATION_DAYS` | `365` | an active token this many days old is `rotation_due` (API, CLI, legacy report, catalogue `token_rotation_days`); a recommendation, nothing is refused; `0` turns it off |
 | `ACCESS_TOKEN_LAST_USED_INTERVAL_S` | `300` | `last_used_at` is written at most once per token per interval |
 | `AGREEMENTS_API_KEY` | `""` | read by the legacy import only (agreements' own setting) |
 
@@ -94,9 +94,9 @@ The `post_migrate` import never fails `migrate` — it logs and moves on. `--che
 a key module calls `verify_api_key` there is no fallback to its legacy table, so an unimported key is a refused
 caller. Fix a `mixed` secret by rotation (`operations.md`) before the deploy goes on.
 
-After the upgrade migration `0002` every active non-superuser staff user holds **Manager**. Access management, the
-Django admin and token issuing stay with superusers until someone is granted Administrator — the `grant.migrate`
-rows in the audit list who got what.
+After the upgrade migration `0002` every active non-superuser staff user holds **Manager**. Access management and
+token issuing stay with superusers until someone is granted Administrator — the `grant.migrate` rows in the audit list
+who got what. The Django admin site stays with superusers whatever the grants (D32).
 
 ## Rollback
 

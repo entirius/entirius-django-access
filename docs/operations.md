@@ -10,7 +10,7 @@ Install-time facts (apps, middleware, settings, deploy order) are in `install.md
 | Command | Flags | What it does |
 |---|---|---|
 | `access_import_legacy_keys` | `--dry-run`, `--report`, `--check` | imports the legacy keys (the same as `post_migrate`) and prints counts per source; `--report` adds the `legacy_source` ids; `--check` writes nothing and exits 1 while a key is missing, a secret is `mixed` or `stale`, or a source fails |
-| `access_legacy_report` | `--json PATH`, `--module LABEL` | one row per legacy token: source, scopes, channel, created, last used, expiry, state |
+| `access_legacy_report` | `--json PATH`, `--module LABEL` | one row per legacy token: source, scopes, channel, created, last used, expiry, state, age, rotation due |
 | `access_purge_legacy_keys` | `--yes`, `--force`, `--recent-days N`, `--dry-run` | lists (default) or with `--yes` deletes the plaintext rows of imported legacy keys; exits 1 when a key used within `N` (30) days is refused |
 | `access_token` | `create`, `rotate`, `revoke`, `expire`, `list` | tokens from the command line; `create` / `rotate` print the raw value once, alone on stdout; `expire <id> --at YYYY-MM-DD` / `--clear` |
 | `access_routes` | `--check`, `--unmapped`, `--json PATH` | the route audit: admin routes per module, area sources, unmapped and foreign-rule matches; `--unmapped` is the upgrade preflight (`upgrade.md`) |
@@ -56,11 +56,12 @@ Imported legacy keys never expire by themselves — rotation is each team's poli
 somebody revokes, rotates or expires it; the key modules never fall back to their old tables.
 
 - **Report** — `access_legacy_report` lists every legacy token sorted by source: who still calls with which key, when
-  it was last used (`never`), its expiry (`none`) and state. `--module django_checkout` narrows it, `--json PATH`
+  it was last used (`never`), its expiry (`none`), state, age in days and `rotation due` (age counts from the import,
+  not from the legacy row). `--module django_checkout` narrows it, `--json PATH`
   writes the rows. `prefix…last_four` only (`legacy…` for a short secret).
 - **Expiry** — a team sets or clears one per token: `access_token expire <id> --at 2027-06-30` / `--clear`, or
-  `POST tokens/<id>/expiry/` (`api.md`). Any future date or none for legacy and publishable tokens; an issued secret
-  token keeps the 365-day cap. A past date is refused — revoke instead. One `token.expiry` audit row each.
+  `POST tokens/<id>/expiry/` (`api.md`). Any future date or none, for every token (D31). A past date is refused —
+  revoke instead. One `token.expiry` audit row each.
 - **Move a caller off a legacy key** — issue a new token with the same scope and pin, switch the caller, revoke the
   legacy token (`access_token revoke <id>`).
 
@@ -84,8 +85,12 @@ backups taken before it still hold the plaintext — expire them on the backup s
 ## Rotation and revocation
 
 - **Rotate** (`tokens/<id>/rotate/`, `access_token rotate`): a successor with the same application, scopes and pin;
-  the old token stays valid for `overlap_hours` (default 24, API 0–168). A secret token's successor keeps the old
-  lifetime, capped at 365 days.
+  the old token stays valid for `overlap_hours` (default 24, API 0–168). The successor gets the given `expires_at`
+  or none — no inherited or capped lifetime (D31).
+- **When to rotate**: no token is forced to expire. Every token shows `age_days` and `rotation_due` (active and at
+  least `ACCESS_TOKEN_ROTATION_DAYS`, default 365, old) in the API, `access_token list` (`age=<n>d`, `rotation due`)
+  and `access_legacy_report`; the CMS reads the rule from the catalogue's `token_rotation_days`. Nothing is refused,
+  logged or audited for age — rotate the flagged tokens on your schedule; `0` turns the flag off.
 - **Revoke** (`tokens/<id>/revoke/`, `access_token revoke`): refused on the next request — verification is never
   cached.
 - **Deactivate an application** (`PATCH applications/<id>/ {"is_active": false}`): every token of it stops.

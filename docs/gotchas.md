@@ -22,7 +22,8 @@ where it is enforced.
   package = app label). An app whose label differs from its package never matches its own rules — the audit shows
   the routes as `UNMAPPED`.
 - **The Django admin site is owned by path, not by module.** Every non-DRF view under `admin/` belongs to owner
-  `django` (area `access.manage`; login, logout and password change are the staff baseline), a module's own
+  `django` (pseudo-area `superuser.only`, D32 — no role opens it, Administrator included; login, logout and password
+  change are the staff baseline), a module's own
   `ModelAdmin` view included (`django_reviews.admin` → `django`) — the safe direction: a module rule never opens its
   admin pages to staff.
 - **`self_auth` is strict.** Only a DRF view on exactly `JWTAuthentication` / `SessionAuthentication` with a
