@@ -16,7 +16,7 @@ from django.db.models import Count, Prefetch, Q, QuerySet
 
 from django_access.catalogue import registry
 from django_access.models import AuditEntry, Grant, Role
-from django_access.services import gate, permissions
+from django_access.services import gate, permissions, tokens
 
 GRANT_RELATED = ("role", "user", "group")
 
@@ -34,8 +34,8 @@ class AuditFilter:
 
 
 def catalogue() -> dict:
-    """Areas grouped by module (``assignable`` false for ``access.manage``), the built-in roles' permissions and the
-    token scopes."""
+    """Areas grouped by module (``assignable`` false for ``access.manage``), the built-in roles' permissions, the
+    token scopes and the rotation recommendation in days."""
     assignable = {item.key for item in registry.custom_role_areas()}
     by_module: dict[str, list[dict]] = {}
     for item in registry.areas():
@@ -45,7 +45,8 @@ def catalogue() -> dict:
         {"key": key, "name": name, "description": text, "permissions": permissions.builtin_permissions(key)}
         for key, (name, text) in permissions.BUILTIN_ROLES.items()
     ]
-    return {"modules": modules, "roles": roles, "scopes": [_scope(scope) for scope in registry.scopes()]}
+    scopes = [_scope(scope) for scope in registry.scopes()]
+    return {"modules": modules, "roles": roles, "scopes": scopes, "token_rotation_days": tokens.rotation_days()}
 
 
 def _area(item) -> dict:

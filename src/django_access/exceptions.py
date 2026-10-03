@@ -24,10 +24,8 @@ class ReservedPermission(ValueError):
 
 
 class TokenExpiryError(ValueError):
-    """A secret-scope token without an expiry, or with one beyond the maximum lifetime; an expiry in the past."""
+    """An expiry in the past (D31: no token needs an expiry, and none has a maximum)."""
 
-    EXPIRY_REQUIRED = "EXPIRY_REQUIRED"
-    EXPIRY_TOO_LONG = "EXPIRY_TOO_LONG"
     EXPIRY_IN_PAST = "EXPIRY_IN_PAST"
 
     def __init__(self, code: str, message: str) -> None:

@@ -28,7 +28,7 @@ from django.utils import timezone
 
 from django_access.models import ApiToken, Application, AuditAction, AuditEntry
 from django_access.services.access_service import Actor
-from django_access.services.tokens import ACTIVE, hash_key, is_secret, lifecycle_state
+from django_access.services.tokens import ACTIVE, hash_key, is_secret, lifecycle_state, rotation_due, token_age_days
 
 logger = logging.getLogger("django_access.legacy")
 
@@ -416,6 +416,8 @@ def _report_row(token: ApiToken, now: datetime) -> dict:
         "last_used_at": token.last_used_at.isoformat() if token.last_used_at else NEVER,
         "expires_at": token.expires_at.isoformat() if token.expires_at else NONE,
         "state": lifecycle_state(token, now),
+        "age_days": token_age_days(token, now),
+        "rotation_due": rotation_due(token, now),
     }
 
 

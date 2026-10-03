@@ -4,7 +4,7 @@
 """`manage.py access_token create|rotate|revoke|expire|list` — application tokens from the command line.
 
 ``create`` and ``rotate`` print the raw value once, alone on its stdout line (the rest goes to stderr); ``list`` shows
-``prefix…last_four`` only. Nothing here ever prints ``key_hash``.
+``prefix…last_four`` only, with the token's age and ``rotation due`` (D31). Nothing here ever prints ``key_hash``.
 """
 
 from datetime import date, datetime, time, timedelta
@@ -41,7 +41,7 @@ class Command(BaseCommand):
         create.add_argument("--create-application", action="store_true", help="create the application when missing")
         create.add_argument("--scope", action="append", required=True, dest="scopes", help="token scope (repeatable)")
         create.add_argument("--channel", dest="channel_idx", help="pin the token to one channel idx")
-        create.add_argument("--expires-days", type=_positive, help="lifetime in days (required for secret scopes)")
+        create.add_argument("--expires-days", type=_positive, help="lifetime in days (optional: none = no expiry)")
         create.add_argument("--name", default="", help="token name")
         rotate = sub.add_parser("rotate", help="issue a successor; prints the new raw value once")
         rotate.add_argument("token_id", type=int)
@@ -118,12 +118,14 @@ class Command(BaseCommand):
             queryset = queryset.filter(application__name=options["application"])
         now = timezone.now()
         for token in queryset:
-            self.stdout.write(self._row(token, tokens.token_state(token, now)))
+            self.stdout.write(self._row(token, now))
 
-    def _row(self, token: ApiToken, state: str) -> str:
+    def _row(self, token: ApiToken, now: datetime) -> str:
         expires = token.expires_at.isoformat() if token.expires_at else "never"
         used = token.last_used_at.isoformat() if token.last_used_at else "never"
+        due = "\trotation due" if tokens.rotation_due(token, now) else ""
         return (
             f"{token.pk}\t{token.application.name}\t{token.name}\t{token.display}\t{','.join(token.scopes)}\t"
-            f"channel={token.channel_idx or '*'}\texpires={expires}\tlast_used={used}\t{state}"
+            f"channel={token.channel_idx or '*'}\texpires={expires}\tlast_used={used}\t"
+            f"age={tokens.token_age_days(token, now)}d\t{tokens.token_state(token, now)}{due}"
         )

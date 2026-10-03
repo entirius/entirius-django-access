@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Token API secrets: ``key_hash`` in no response, the raw value only in its own create/rotate response (never cached,
-never logged, never audited), forbidden fields and mixed scopes refused, secret tokens expire within 365 days, only
+never logged, never audited), forbidden fields and mixed scopes refused, secret tokens need no expiry and have no maximum (D31), only
 access managers reach the API, and the OpenAPI document holds no token-like string."""
 
 import json
@@ -79,7 +79,7 @@ def flow(admin_api, application, clock, caplog):
     record("409", admin_api.post(f"{URL}tokens/{rotated['id']}/rotate/", {}, format="json"))
     mixed = {"scopes": ["checkout.storefront", SECRET_SCOPE]}
     record("400", admin_api.post(tokens_url(application), secret_body(clock, **mixed), format="json"))
-    record("400 expiry", admin_api.post(tokens_url(application), secret_body(clock, days=None), format="json"))
+    record("400 expiry", admin_api.post(tokens_url(application), secret_body(clock, days=-1), format="json"))
     return seen, created["raw"], rotated["raw"]
 
 
@@ -154,26 +154,17 @@ def test_mixed_scopes_are_refused(admin_api, application, clock):
     assert response.status_code == 400 and not ApiToken.objects.exists()
 
 
-def assert_expiry_issue(response, issue: str) -> None:
-    assert response.status_code == 400
-    detail = response.json()["details"][0]
-    assert (detail["field"], detail["issue"]) == ("expires_at", issue)
+@pytest.mark.parametrize("days", [None, 366, 3650])
+def test_secret_token_takes_any_expiry_or_none(admin_api, application, clock, days):
+    response = admin_api.post(tokens_url(application), secret_body(clock, days), format="json")
+    assert response.status_code == 201
+    assert (response.json()["age_days"], response.json()["rotation_due"]) == (0, False)
 
 
-@pytest.mark.parametrize(("days", "issue"), [(None, "EXPIRY_REQUIRED"), (366, "EXPIRY_TOO_LONG")])
-def test_secret_token_expiry_is_enforced(admin_api, application, clock, days, issue):
-    assert_expiry_issue(admin_api.post(tokens_url(application), secret_body(clock, days), format="json"), issue)
-    assert not ApiToken.objects.exists()
-
-
-def test_secret_token_at_365_days_is_issued(admin_api, application, clock):
-    assert admin_api.post(tokens_url(application), secret_body(clock, 365), format="json").status_code == 201
-
-
-def test_secret_rotation_beyond_365_days_is_refused(admin_api, issue, clock):
+def test_secret_rotation_without_expiry_gives_none(admin_api, issue, clock):
     token, _ = issue([SECRET_SCOPE], expires_at=clock.now + timedelta(days=30))
-    body = {"expires_at": (clock.now + timedelta(days=366)).isoformat()}
-    assert_expiry_issue(admin_api.post(f"{URL}tokens/{token.pk}/rotate/", body, format="json"), "EXPIRY_TOO_LONG")
+    response = admin_api.post(f"{URL}tokens/{token.pk}/rotate/", {}, format="json")
+    assert response.status_code == 201 and response.json()["expires_at"] is None
 
 
 @pytest.fixture

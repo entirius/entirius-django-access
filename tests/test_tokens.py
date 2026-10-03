@@ -142,7 +142,7 @@ def test_rotate_copies_the_token_and_shortens_the_old_one(issue, system, clock):
     )
     assert (successor.legacy, successor.legacy_source) == (False, "")
     assert token.expires_at == clock.now + timedelta(hours=24)
-    assert successor.expires_at == clock.now + timedelta(days=10)
+    assert successor.expires_at is None  # D31: a successor inherits no expiry
     assert RAW_FORMAT.fullmatch(new_raw) and tokens.hash_key(new_raw) != tokens.hash_key(raw)
 
 

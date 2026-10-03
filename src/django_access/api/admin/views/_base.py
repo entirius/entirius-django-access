@@ -83,8 +83,8 @@ def parse(schema: type[SchemaT], data: object) -> SchemaT:
 
 @contextmanager
 def service_errors() -> Iterator[None]:
-    """Service refusals as v2 errors: ``access.manage`` in a custom role → 400 ``ACCESS_MANAGE_RESERVED``, a secret
-    token's expiry → 400 ``EXPIRY_REQUIRED`` / ``EXPIRY_TOO_LONG`` / ``EXPIRY_IN_PAST``, any other ``ValueError`` → 400, ``AccessConflict``
+    """Service refusals as v2 errors: ``access.manage`` in a custom role → 400 ``ACCESS_MANAGE_RESERVED``, an expiry in the
+    past → 400 ``EXPIRY_IN_PAST``, any other ``ValueError`` → 400, ``AccessConflict``
     (built-in role, duplicate, lockout, revoked token) → 409 ``CONFLICT``."""
     try:
         yield

@@ -17,8 +17,8 @@ PermissionKey = Annotated[str, StringConstraints(max_length=128)]
 ScopeKey = Annotated[str, StringConstraints(max_length=64)]
 MAX_OVERLAP_HOURS = 168
 EXPIRY_DESCRIPTION = (
-    "When the token stops working; must be in the future. A token with a secret scope must expire, at most 365 days "
-    "ahead: none → 400 `EXPIRY_REQUIRED`, later → 400 `EXPIRY_TOO_LONG`."
+    "When the token stops working, or null for never; must be in the future. Optional for every scope and without a "
+    "maximum: an old token is flagged `rotation_due` instead (`ACCESS_TOKEN_ROTATION_DAYS`)."
 )
 
 
@@ -159,7 +159,7 @@ class TokenRotateRequest(BaseModel):
         default=24, ge=0, le=MAX_OVERLAP_HOURS, description="Hours the old token keeps working (0 = stops at once)."
     )
     expires_at: AwareDatetime | None = Field(
-        default=None, description=f"Default: the old token's lifetime from now. {EXPIRY_DESCRIPTION}"
+        default=None, description=f"Default: none — the successor inherits no expiry. {EXPIRY_DESCRIPTION}"
     )
 
     _future = field_validator("expires_at")(_check_future)
@@ -169,7 +169,6 @@ class TokenExpiryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expires_at: AwareDatetime | None = Field(
-        description="The new expiry (in the future: else 400 `EXPIRY_IN_PAST`), or null to clear it. Legacy and "
-        "publishable tokens take any future date or null; an issued secret token keeps the 365-day cap "
-        "(`EXPIRY_REQUIRED` / `EXPIRY_TOO_LONG`). A revoked token → 409."
+        description="The new expiry (in the future: else 400 `EXPIRY_IN_PAST`), or null to clear it. Every token "
+        "takes any future date or null. A revoked token → 409."
     )

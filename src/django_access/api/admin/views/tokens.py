@@ -30,10 +30,18 @@ _TAGS = ["Access tokens"]
 _SHOWN_ONCE = "The raw value is in this response only (`Cache-Control: no-store`)."
 
 
+_COMPUTED = frozenset({"state", "age_days", "rotation_due"})
+
+
 def _fields(token: ApiToken) -> dict:
-    """The response whitelist read off the row, plus the state — never ``key_hash``."""
-    names = TokenResponse.model_fields.keys() - {"state"}
-    return {**{name: getattr(token, name) for name in names}, "state": tokens.lifecycle_state(token, timezone.now())}
+    """The response whitelist read off the row, plus the state, age and rotation flag — never ``key_hash``."""
+    now = timezone.now()
+    computed = {
+        "state": tokens.lifecycle_state(token, now),
+        "age_days": tokens.token_age_days(token, now),
+        "rotation_due": tokens.rotation_due(token, now),
+    }
+    return {**{name: getattr(token, name) for name in TokenResponse.model_fields.keys() - _COMPUTED}, **computed}
 
 
 def dump(token: ApiToken) -> dict:

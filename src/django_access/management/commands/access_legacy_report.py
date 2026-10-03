@@ -4,7 +4,7 @@
 """`manage.py access_legacy_report [--json PATH] [--module LABEL]` — who still uses which legacy key (D28).
 
 One row per legacy token, sorted by source: id, application, source, ``prefix…last_four``, scopes, channel, created,
-last used (or ``never``), expiry (or ``none``), state. Never a raw value, a legacy value or ``key_hash``.
+last used (or ``never``), expiry (or ``none``), state, age in days and ``rotation due`` (D31). Never a raw value, a legacy value or ``key_hash``.
 """
 
 import json
@@ -24,17 +24,21 @@ COLUMNS = (
     "last_used_at",
     "expires_at",
     "state",
+    "age_days",
+    "rotation_due",
 )
 
 
 def _cell(value: object) -> str:
+    if isinstance(value, bool):
+        return "rotation due" if value else "-"
     if isinstance(value, list):
         return ",".join(value)
     return "*" if value is None else str(value)
 
 
 class Command(BaseCommand):
-    help = "List every legacy token with its source, last use, expiry and state (never a key or a hash)."
+    help = "List every legacy token with its source, last use, expiry, state and age (never a key or a hash)."
 
     def add_arguments(self, parser):
         parser.add_argument("--json", dest="json_path", metavar="PATH", help="also write the rows as JSON")

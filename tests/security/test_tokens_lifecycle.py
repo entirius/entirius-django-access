@@ -75,36 +75,34 @@ def test_empty_and_mixed_scope_sets_are_refused(issue, clock, scopes):
     assert not ApiToken.objects.exists()
 
 
-def test_secret_token_needs_an_expiry(issue):
+@pytest.mark.parametrize("days", [None, 3650])
+def test_secret_token_needs_no_expiry_and_has_no_maximum(issue, clock, days):
+    """D31: no lifetime cap — an old token is flagged ``rotation_due`` instead."""
+    expires_at = clock.now + timedelta(days=days) if days else None
+    token, _ = issue([VAULT], expires_at=expires_at)
+    assert token.expires_at == expires_at
+
+
+def test_a_past_expiry_is_refused_at_issue(issue, clock):
     with pytest.raises(TokenExpiryError) as refused:
-        issue([VAULT])
-    assert refused.value.code == "EXPIRY_REQUIRED"
+        issue([VAULT], expires_at=clock.now)
+    assert refused.value.code == "EXPIRY_IN_PAST" and not ApiToken.objects.exists()
 
 
-def test_secret_token_expires_within_365_days(issue, clock):
-    with pytest.raises(TokenExpiryError) as refused:
-        issue([VAULT], expires_at=clock.now + timedelta(days=366))
-    assert refused.value.code == "EXPIRY_TOO_LONG"
-    token, _ = issue([VAULT], expires_at=clock.now + timedelta(days=365))
-    assert token.expires_at == clock.now + timedelta(days=365)
-
-
-def test_secret_rotation_keeps_the_lifetime_within_365_days(issue, system, clock):
+def test_secret_rotation_inherits_no_expiry(issue, system, clock):
     token, _ = issue(["returns.api"], expires_at=clock.now + timedelta(days=365))
     clock.advance(days=300)
     successor, _ = tokens.rotate_token(token, actor=system)
-    assert successor.expires_at == clock.now + timedelta(days=365)
+    assert successor.expires_at is None
+    later = clock.now + timedelta(days=3650)
+    assert tokens.rotate_token(successor, actor=system, expires_at=later)[0].expires_at == later
+
+
+def test_rotation_refuses_a_past_expiry(issue, system, clock):
+    token, _ = issue([VAULT])
     with pytest.raises(TokenExpiryError) as refused:
-        tokens.rotate_token(successor, actor=system, expires_at=clock.now + timedelta(days=400))
-    assert refused.value.code == "EXPIRY_TOO_LONG"
-
-
-def test_secret_rotation_without_a_recorded_expiry_gets_the_maximum(issue, system, clock):
-    """A secret token without expiry can only come from outside ``issue_token`` (a raw insert); rotation caps it."""
-    token, _ = issue([VAULT], expires_at=clock.now + timedelta(days=30))
-    ApiToken.objects.filter(pk=token.pk).update(expires_at=None)
-    successor, _ = tokens.rotate_token(token, actor=system)
-    assert successor.expires_at == clock.now + timedelta(days=365)
+        tokens.rotate_token(token, actor=system, expires_at=clock.now - timedelta(seconds=1))
+    assert refused.value.code == "EXPIRY_IN_PAST" and ApiToken.objects.count() == 1
 
 
 def test_publishable_token_may_live_without_expiry(issue):
@@ -112,8 +110,14 @@ def test_publishable_token_may_live_without_expiry(issue):
     assert token.expires_at is None
 
 
-def test_cli_refuses_a_secret_scope_without_expiry_and_creates_nothing():
+def test_cli_issues_a_secret_scope_without_expiry():
     args = ["create", "--application", "erase", "--create-application", "--scope", "checkout.erase"]
-    with pytest.raises(CommandError, match="expiry"):
-        call_command("access_token", *args, stdout=StringIO(), stderr=StringIO())
+    call_command("access_token", *args, stdout=StringIO(), stderr=StringIO())
+    assert ApiToken.objects.get().expires_at is None
+
+
+def test_cli_refuses_a_non_positive_lifetime_and_creates_nothing():
+    args = ["create", "--application", "erase", "--create-application", "--scope", "checkout.erase"]
+    with pytest.raises(CommandError):
+        call_command("access_token", *args, "--expires-days", "0", stdout=StringIO(), stderr=StringIO())
     assert not ApiToken.objects.exists() and not Application.objects.exists()

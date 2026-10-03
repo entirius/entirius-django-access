@@ -35,7 +35,7 @@ class ScopeResponse(BaseModel):
         description="English label; the CMS translates by key.", examples=["Storefront carts and orders"]
     )
     module: str = Field(description="App label of the owning module.", examples=["django_checkout"])
-    publishable: bool = Field(description="Reaches browsers by design; a secret scope's token must expire.")
+    publishable: bool = Field(description="Reaches browsers by design; publishable and secret never share a token.")
     routes: list[str] = Field(description="Route patterns for docs, not matching rules.")
 
 
@@ -43,6 +43,10 @@ class CatalogueResponse(BaseModel):
     modules: list[ModuleAreasResponse]
     roles: list[BuiltinRoleResponse]
     scopes: list[ScopeResponse]
+    token_rotation_days: int = Field(
+        description="`ACCESS_TOKEN_ROTATION_DAYS`: a token this many days old is `rotation_due` (0 = never).",
+        examples=[365],
+    )
 
 
 class RoleResponse(BaseModel):
@@ -229,6 +233,10 @@ class TokenResponse(BaseModel):
     )
     state: Literal["active", "expired", "revoked"] = Field(
         description="The token's own state; an inactive application stops its active tokens too (`is_active`)."
+    )
+    age_days: int = Field(description="Whole days since the token was issued (or imported).", examples=[12])
+    rotation_due: bool = Field(
+        description="Active and at least `token_rotation_days` old: rotate it. A recommendation — nothing is refused."
     )
 
 

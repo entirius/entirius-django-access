@@ -29,14 +29,16 @@ MAX_PRESENTED_LENGTH = 256
 KEY_HEADERS = ("HTTP_X_API_KEY", "HTTP_X_API_ADMIN_KEY")
 ACTIVE, REVOKED, EXPIRED, INACTIVE = "active", "revoked", "expired", "application inactive"
 _EDITABLE_APPLICATION_FIELDS = frozenset({"name", "description", "is_active"})
+MAX_OVERLAP_HOURS = 365 * 24
 
 
 def hash_key(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def _max_ttl() -> timedelta:
-    return timedelta(days=getattr(settings, "ACCESS_SECRET_TOKEN_MAX_TTL_DAYS", 365))
+def rotation_days() -> int:
+    """``ACCESS_TOKEN_ROTATION_DAYS``: the age from which a token is due for rotation (0 = never recommended)."""
+    return getattr(settings, "ACCESS_TOKEN_ROTATION_DAYS", 365)
 
 
 def _last_used_interval() -> timedelta:
@@ -64,14 +66,12 @@ def _validated_scopes(scopes: list[str]) -> list[str]:
     return sorted(set(scopes))
 
 
-def _check_expiry(scopes: list[str], expires_at: datetime | None, now: datetime) -> None:
-    """A token holding a secret scope must expire, at most ``ACCESS_SECRET_TOKEN_MAX_TTL_DAYS`` after ``now``."""
-    if not is_secret(scopes):
-        return
-    if expires_at is None:
-        raise TokenExpiryError(TokenExpiryError.EXPIRY_REQUIRED, "A token with a secret scope needs an expiry")
-    if expires_at > now + _max_ttl():
-        raise TokenExpiryError(TokenExpiryError.EXPIRY_TOO_LONG, f"Secret tokens expire within {_max_ttl().days} days")
+def _check_expiry(expires_at: datetime | None, now: datetime) -> None:
+    """An expiry is optional and has no maximum (D31); a given one must lie in the future — to stop a token, revoke it."""
+    if expires_at is not None and expires_at <= now:
+        raise TokenExpiryError(
+            TokenExpiryError.EXPIRY_IN_PAST, "The expiry must be in the future (or revoke the token)"
+        )
 
 
 def token_detail(token: ApiToken) -> dict:
@@ -137,7 +137,7 @@ def issue_token(
 ) -> tuple[ApiToken, str]:
     """A new token and its raw value — the only time the raw value exists."""
     scopes = _validated_scopes(scopes)
-    _check_expiry(scopes, expires_at, timezone.now())
+    _check_expiry(expires_at, timezone.now())
     token, raw = _create(
         actor, application=application, name=name, scopes=scopes, channel_idx=channel_idx, expires_at=expires_at
     )
@@ -145,18 +145,10 @@ def issue_token(
     return token, raw
 
 
-def _rotated_expiry(token: ApiToken, now: datetime) -> datetime | None:
-    """The old token's lifetime from ``now``; a secret token's capped at the maximum (none recorded = the maximum)."""
-    lifetime = token.expires_at - token.created_at if token.expires_at else None
-    if is_secret(token.scopes):
-        lifetime = min(lifetime or _max_ttl(), _max_ttl())
-    return now + lifetime if lifetime else None
-
-
 def _shorten(token: ApiToken, now: datetime, overlap_hours: int) -> None:
     """The old token expires ``overlap_hours`` from ``now`` (0 = at once) unless it expires earlier anyway."""
-    if not 0 <= overlap_hours <= _max_ttl().days * 24:
-        raise ValueError(f"overlap_hours must be between 0 and {_max_ttl().days * 24}")
+    if not 0 <= overlap_hours <= MAX_OVERLAP_HOURS:
+        raise ValueError(f"overlap_hours must be between 0 and {MAX_OVERLAP_HOURS}")
     cutoff = now + timedelta(hours=overlap_hours)
     token.expires_at = min(token.expires_at, cutoff) if token.expires_at else cutoff
     token.save(update_fields=["expires_at"])
@@ -171,16 +163,16 @@ def _copied(token: ApiToken) -> dict:
 def rotate_token(
     token: ApiToken, *, actor: Actor, overlap_hours: int = 24, expires_at: datetime | None = None
 ) -> tuple[ApiToken, str]:
-    """A successor with the same application, scopes and channel; the old token expires after ``overlap_hours``."""
+    """A successor with the same application, scopes and channel, expiring at ``expires_at`` (none by default); the old
+    token expires after ``overlap_hours``."""
     token = ApiToken.objects.select_for_update().get(pk=token.pk)
     if token.revoked_at:
         raise AccessConflict("A revoked token cannot be rotated")
     now = timezone.now()
     scopes = _validated_scopes(token.scopes)
-    new_expiry = expires_at or _rotated_expiry(token, now)
-    _check_expiry(scopes, new_expiry, now)
+    _check_expiry(expires_at, now)
     _shorten(token, now, overlap_hours)
-    successor, raw = _create(actor, **_copied(token), scopes=scopes, expires_at=new_expiry)
+    successor, raw = _create(actor, **_copied(token), scopes=scopes, expires_at=expires_at)
     replaced = {"replaces": token.pk, "replaces_expires_at": token.expires_at.isoformat()}
     record_audit(AuditAction.TOKEN_ROTATE, actor, successor, {**token_detail(successor), **replaced})
     return successor, raw
@@ -204,18 +196,12 @@ def _iso(value: datetime | None) -> str | None:
 
 @transaction.atomic
 def set_token_expiry(token: ApiToken, *, expires_at: datetime | None, actor: Actor) -> ApiToken:
-    """Set or clear (``None``) a token's expiry. Legacy and publishable tokens take any future date or none (D28); an
-    issued secret token keeps the D21 cap. To stop a token now, revoke it."""
+    """Set or clear (``None``) a token's expiry: any future date or none, for every token (D28, D31). To stop a token
+    now, revoke it."""
     token = ApiToken.objects.select_for_update().get(pk=token.pk)
     if token.revoked_at:
         raise AccessConflict("A revoked token cannot get a new expiry")
-    now = timezone.now()
-    if expires_at is not None and expires_at <= now:
-        raise TokenExpiryError(
-            TokenExpiryError.EXPIRY_IN_PAST, "The expiry must be in the future (or revoke the token)"
-        )
-    if not token.legacy:
-        _check_expiry(token.scopes, expires_at, now)
+    _check_expiry(expires_at, timezone.now())
     change = {"token_id": token.pk, "legacy": token.legacy, "from": _iso(token.expires_at), "to": _iso(expires_at)}
     token.expires_at = expires_at
     token.save(update_fields=["expires_at"])
@@ -230,6 +216,17 @@ def lifecycle_state(token: ApiToken, now: datetime) -> str:
     if token.expires_at and token.expires_at <= now:
         return EXPIRED
     return ACTIVE
+
+
+def token_age_days(token: ApiToken, now: datetime) -> int:
+    """Whole days since the token was issued (or imported)."""
+    return (now - token.created_at).days
+
+
+def rotation_due(token: ApiToken, now: datetime) -> bool:
+    """An active token at least ``ACCESS_TOKEN_ROTATION_DAYS`` old — a recommendation only, nothing is refused (D31)."""
+    days = rotation_days()
+    return days > 0 and lifecycle_state(token, now) == ACTIVE and token_age_days(token, now) >= days
 
 
 def token_state(token: ApiToken, now: datetime) -> str:

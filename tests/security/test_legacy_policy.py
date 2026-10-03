@@ -75,15 +75,12 @@ def test_a_legacy_secret_token_takes_any_future_date_or_none(legacy_row, system,
     }
 
 
-@pytest.mark.parametrize(
-    ("expires_at", "code"),
-    [(None, TokenExpiryError.EXPIRY_REQUIRED), (days(400), TokenExpiryError.EXPIRY_TOO_LONG)],
-)
-def test_an_issued_secret_token_keeps_d21(issue, system, expires_at, code):
+@pytest.mark.parametrize("expires_at", [None, days(400)])
+def test_an_issued_secret_token_takes_any_future_date_or_none(issue, system, expires_at):
+    """D31 replaced D21: no issued token keeps a lifetime cap."""
     token, _ = issue(["vault.api"], expires_at=days(30))
-    with pytest.raises(TokenExpiryError) as raised:
-        tokens.set_token_expiry(token, expires_at=expires_at, actor=system)
-    assert raised.value.code == code and expiry_rows() == []
+    assert tokens.set_token_expiry(token, expires_at=expires_at, actor=system).expires_at == expires_at
+    assert len(expiry_rows()) == 1
 
 
 def test_an_issued_publishable_token_may_clear_its_expiry(issue, system):
@@ -129,10 +126,10 @@ def test_api_400(legacy_row, admin_api, body, issue):
         assert [detail["issue"] for detail in response.json()["details"]] == [issue]
 
 
-def test_api_400_for_an_issued_secret_token_without_expiry(issue, admin_api):
+def test_api_clears_the_expiry_of_an_issued_secret_token(issue, admin_api):
     token, _ = issue(["vault.api"], expires_at=days(30))
     response = admin_api.post(URL.format(token.pk), {"expires_at": None}, format="json")
-    assert [detail["issue"] for detail in response.json()["details"]] == ["EXPIRY_REQUIRED"]
+    assert response.status_code == 200 and response.json()["expires_at"] is None
 
 
 @pytest.mark.parametrize("name", ["staff", "manager"])
