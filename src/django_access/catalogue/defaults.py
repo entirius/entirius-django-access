@@ -265,7 +265,7 @@ ADMIN_ROUTES: tuple[str, ...] = (
 NOT_ADMIN_ROUTES: tuple[str, ...] = (rf"api-admin/(?:accounts|checkout)/{SEGMENT}{SEGMENT}customer/delete$",)
 # The only rules for routes served by a framework package (django, rest_framework, drf_spectacular): the contentdb
 # DefaultRouter root, the Django admin site (root-equivalent: is_superuser, group membership, plaintext legacy keys —
-# superusers only (D32), except its login pages) and the OpenAPI schema views (staff-only in the service).
+# superuser.only (D32), except its login pages) and the OpenAPI schema views (staff-only in the service).
 FRAMEWORK_RULES: tuple[RouteRule, ...] = (
     RouteRule("django_contentdb", rf"{_CONTENTDB_V1}(?:<drf_format_suffix:format>)?$", "content.pages"),
     RouteRule("django", "admin/(?:login|logout|jsi18n|password_change(?:/done)?)/$", STAFF_BASELINE),
