@@ -16,7 +16,7 @@ from django.conf import settings
 from django.core import checks
 
 from django_access.catalogue import registry
-from django_access.catalogue.areas import AREA_KEY_RE, LEVEL_SETS, READ, SENSITIVE_FLAGS, STAFF_BASELINE, WRITE, Area
+from django_access.catalogue.areas import AREA_KEY_RE, LEVEL_SETS, PSEUDO_AREAS, READ, SENSITIVE_FLAGS, WRITE, Area
 from django_access.catalogue.defaults import AREA_OVERRIDES, RouteRule
 from django_access.services import gate, route_map
 from django_access.services.gate import ENFORCE, MODE_SETTING, MODES
@@ -60,8 +60,8 @@ def _duplicates(keys, what: str, check_id: str) -> list[checks.Error]:
 
 def _area_errors(item: Area) -> list[checks.Error]:
     problems = []
-    if not AREA_KEY_RE.match(item.key) or item.key == STAFF_BASELINE:
-        problems.append("key must match <module>.<name> in lowercase and not be the staff baseline")
+    if not AREA_KEY_RE.match(item.key) or item.key in PSEUDO_AREAS:
+        problems.append("key must match <module>.<name> in lowercase and not be a pseudo-area")
     if tuple(item.levels) not in LEVEL_SETS:
         problems.append(f"levels must be one of {LEVEL_SETS}")
     if not set(item.sensitive) <= SENSITIVE_FLAGS:
@@ -71,7 +71,7 @@ def _area_errors(item: Area) -> list[checks.Error]:
 
 def _rule_errors(rule: RouteRule, known: set[str]) -> list[checks.Error]:
     errors = []
-    if rule.area != STAFF_BASELINE and rule.area not in known:
+    if rule.area not in PSEUDO_AREAS and rule.area not in known:
         errors.append(
             checks.Error(f"Route rule {rule.pattern!r} names unknown area {rule.area!r}", id="django_access.E003")
         )
@@ -157,7 +157,7 @@ def _view_messages(info: route_map.RouteInfo, callback, known: dict) -> list[che
     messages = [] if levels is None else _level_errors(info, levels, known)
     if area is None:
         return messages
-    if not isinstance(area, str) or (area != STAFF_BASELINE and area not in known):
+    if not isinstance(area, str) or (area not in PSEUDO_AREAS and area not in known):
         messages.append(checks.Error(f"{info.route}: access_area {area!r} is not an area", id="django_access.E007"))
     if not info.admin:
         messages.append(

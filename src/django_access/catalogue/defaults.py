@@ -12,7 +12,14 @@ on its admin root, so a new route of a known module lands in the module's broade
 import re
 from dataclasses import dataclass
 
-from django_access.catalogue.areas import ACCESS_MANAGE, PIM_PRODUCT_DELETE, READ, STAFF_BASELINE, WRITE
+from django_access.catalogue.areas import (
+    ACCESS_MANAGE,
+    PIM_PRODUCT_DELETE,
+    READ,
+    STAFF_BASELINE,
+    SUPERUSER_ONLY,
+    WRITE,
+)
 
 SEGMENT = r"[^/]+/"
 # DRF router routes end a name with "/" or with the format-suffix twin "\.(?P<format>…)".
@@ -258,11 +265,11 @@ ADMIN_ROUTES: tuple[str, ...] = (
 NOT_ADMIN_ROUTES: tuple[str, ...] = (rf"api-admin/(?:accounts|checkout)/{SEGMENT}{SEGMENT}customer/delete$",)
 # The only rules for routes served by a framework package (django, rest_framework, drf_spectacular): the contentdb
 # DefaultRouter root, the Django admin site (root-equivalent: is_superuser, group membership, plaintext legacy keys —
-# access management only, except its login pages) and the OpenAPI schema views (staff-only in the service).
+# superusers only (D32), except its login pages) and the OpenAPI schema views (staff-only in the service).
 FRAMEWORK_RULES: tuple[RouteRule, ...] = (
     RouteRule("django_contentdb", rf"{_CONTENTDB_V1}(?:<drf_format_suffix:format>)?$", "content.pages"),
     RouteRule("django", "admin/(?:login|logout|jsi18n|password_change(?:/done)?)/$", STAFF_BASELINE),
-    RouteRule("django", "admin/", ACCESS_MANAGE),
+    RouteRule("django", "admin/", SUPERUSER_ONLY),
     RouteRule("drf_spectacular", "api/schema/", STAFF_BASELINE),
 )
 # Non-DRF routes owned by the Django admin site; its own views (marked by its get_urls, or its login page) authenticate

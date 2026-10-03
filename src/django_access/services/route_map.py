@@ -24,7 +24,7 @@ from django.urls import URLPattern, URLResolver, get_resolver
 from rest_framework.views import APIView
 
 from django_access.catalogue import registry
-from django_access.catalogue.areas import READ, STAFF_BASELINE, WRITE
+from django_access.catalogue.areas import PSEUDO_AREAS, READ, WRITE
 from django_access.catalogue.defaults import (
     ADMIN_ROUTES,
     AREA_OVERRIDES,
@@ -254,13 +254,14 @@ def _requires_auth(item: object) -> bool:
 
 
 def required_permission(info: RouteInfo, method: str) -> str | None:
-    """``<area>:<level>`` the method needs, ``"staff.baseline"``, or ``None`` when the route has no area.
+    """``<area>:<level>`` the method needs, a pseudo-area (``staff.baseline``, ``superuser.only``) as it is, or
+    ``None`` when the route has no area.
 
     An area override replaces the route's area for its method (deleting a SKU is not editing it). A level the area
     does not offer becomes write: a write-only area needs write for every method, and a write on a read-only area
     needs a key no role holds — refused, never an error.
     """
-    if info.area is None or info.area == STAFF_BASELINE:
+    if info.area is None or info.area in PSEUDO_AREAS:
         return info.area
     method = method.upper()
     area = info.method_areas.get(method, info.area)

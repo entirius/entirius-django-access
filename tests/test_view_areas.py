@@ -107,6 +107,11 @@ def faq_public_area(monkeypatch):
     monkeypatch.setattr(view_area_urls.FaqPublic, "access_area", "faq.items", raising=False)
 
 
+def test_e007_accepts_the_superuser_only_pseudo_area(monkeypatch):
+    monkeypatch.setattr(view_area_urls.FaqAnswers, "access_area", "superuser.only", raising=False)
+    assert view_areas_are_valid() == []
+
+
 @pytest.mark.parametrize("area", ["faq.gone", ["faq.items"]])
 def test_e007_on_an_area_the_catalogue_lacks(monkeypatch, area):
     monkeypatch.setattr(view_area_urls.FaqAnswers, "access_area", area, raising=False)

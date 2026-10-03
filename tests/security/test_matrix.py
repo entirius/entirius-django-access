@@ -15,7 +15,7 @@ from rest_framework_simplejwt.settings import api_settings as jwt_settings
 
 from django_access.models import AuditEntry
 from django_access.services import access_service
-from django_access.services.permissions import MANAGER, VIEWER
+from django_access.services.permissions import ADMINISTRATOR, MANAGER, VIEWER
 from tests import gate_urls as urls
 from tests.helpers import bearer
 from tests.security.contract import (
@@ -145,9 +145,37 @@ def test_django_admin_anonymous_gets_the_login_redirect(client):
     assert client.get("/admin/").status_code == 302
 
 
-def test_django_admin_needs_access_manage(client, make_user, role, system):
-    manager = make_user()
-    access_service.grant_role(role(MANAGER), user=manager, actor=system)
-    client.force_login(manager)
-    assert_outcome(client.get("/admin/"), _DENIED)
+@pytest.fixture
+def role_holder(make_user, role, system):
+    def make(role_key: str):
+        user = make_user()
+        access_service.grant_role(role(role_key), user=user, actor=system)
+        return user
+
+    return make
+
+
+@pytest.mark.parametrize("path", ["/admin/", "/admin/django_access/role/"])
+@pytest.mark.parametrize("role_key", [ADMINISTRATOR, MANAGER, VIEWER])
+def test_django_admin_is_superuser_only(client, role_holder, role_key, path):
+    """D32: no role opens the Django admin site, the Administrator's included."""
+    client.force_login(role_holder(role_key))
+    response = client.get(path)
+    assert_outcome(response, _DENIED)
+    assert response.json()["details"][0]["description"] == "superuser only"
+
+
+def test_an_administrator_keeps_the_django_admin_login_pages(client, role_holder):
+    administrator = role_holder(ADMINISTRATOR)
+    assert client.get("/admin/login/", **bearer(administrator)).status_code == 200
+    client.force_login(administrator)
     assert client.get("/admin/password_change/").status_code == 200
+    assert client.post("/admin/logout/").status_code == 200
+
+
+def test_a_superuser_passes_the_django_admin_and_writes_are_audited(client, make_user):
+    client.force_login(make_user(is_superuser=True))
+    assert client.get("/admin/django_access/role/").status_code == 200
+    client.post("/admin/django_access/role/", {})
+    [row] = AuditEntry.objects.filter(action="gate.bypass")
+    assert row.detail["needed"] == "superuser.only"

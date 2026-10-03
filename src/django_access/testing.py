@@ -12,7 +12,7 @@ from collections.abc import Callable
 from django.apps import apps
 
 from django_access.catalogue import registry
-from django_access.catalogue.areas import STAFF_BASELINE
+from django_access.catalogue.areas import PSEUDO_AREAS
 from django_access.services import route_map
 
 UNMAPPED, FOREIGN_RULE, UNKNOWN_AREA, DEFAULTS = "unmapped", "foreign_rule", "unknown_area", "defaults"
@@ -49,7 +49,7 @@ def _problems(info: route_map.RouteInfo, callback: Callable, require_own: bool) 
     ]
     if info.area is None:
         reasons.append(UNMAPPED)
-    elif info.area != STAFF_BASELINE and info.area not in {item.key for item in registry.areas()}:
+    elif info.area not in PSEUDO_AREAS and info.area not in {item.key for item in registry.areas()}:
         reasons.append(f"{UNKNOWN_AREA} ({info.area})")
     if require_own and info.area_source == route_map.DEFAULT:
         reasons.append(f"{DEFAULTS} (set access_area on the view or declare access_route_rules)")

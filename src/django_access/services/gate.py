@@ -23,7 +23,7 @@ from rest_framework.permissions import SAFE_METHODS
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from django_access.catalogue import registry
-from django_access.catalogue.areas import STAFF_BASELINE, WRITE
+from django_access.catalogue.areas import STAFF_BASELINE, SUPERUSER_ONLY, WRITE
 from django_access.models import AuditAction, AuditEntry
 from django_access.services import permissions, route_map
 from django_access.services.access_service import Actor
@@ -48,6 +48,7 @@ _DESCRIPTIONS = {
     UNMAPPED_ROUTE: "This admin route has no access area.",
     NOT_AUTHENTICATED: AUTHENTICATION_MESSAGE,
 }
+SUPERUSER_DESCRIPTION = "superuser only"
 # The v2 exception handler's codes and texts, so clients and BDD steps read a gate refusal like a view's.
 _ENVELOPES = {
     401: ("AUTHENTICATION_REQUIRED", AUTHENTICATION_MESSAGE, "header"),
@@ -100,8 +101,9 @@ def decide(request: HttpRequest, view_func: Callable) -> Decision:
 
 
 def _is_write(needed: str | None, method: str) -> bool:
-    """A superuser write worth a bypass row: a write permission, or any unsafe method on a route without an area."""
-    if needed is None:
+    """A superuser write worth a bypass row: a write permission, or any unsafe method on a route without an area or
+    behind ``superuser.only``."""
+    if needed in (None, SUPERUSER_ONLY):
         return method not in SAFE_METHODS
     return needed.endswith(f":{WRITE}")
 
@@ -112,6 +114,8 @@ def _staff_decision(user, info: RouteInfo, needed: str | None) -> Decision:
         return Decision(False, 403, UNMAPPED_ROUTE)
     if needed == STAFF_BASELINE:
         return ALLOW
+    if needed == SUPERUSER_ONLY:  # D32: no role opens it, Administrators included
+        return Decision(False, 403, ACCESS_DENIED, needed)
     if not _offered(needed) or not permissions.has_permission(user, needed):
         return Decision(False, 403, ACCESS_DENIED, needed)
     return Decision(True, needed=needed)
@@ -181,13 +185,17 @@ def _drf_session_user(request: HttpRequest):
 def refusal(decision: Decision) -> JsonResponse:
     """The v2 envelope of a 401/403 refusal; the 401 carries ``WWW-Authenticate``. Names no area for ``STAFF_ONLY``."""
     error, message, location = _ENVELOPES[decision.status]
-    description = _DESCRIPTIONS.get(decision.issue) or f"needs {decision.needed}"
+    description = _DESCRIPTIONS.get(decision.issue) or _needs(decision.needed)
     detail = ErrorDetail(field=None, location=location, issue=decision.issue, description=description)
     body = ErrorResponse(error=error, message=message, debug_id=new_debug_id(), details=[detail])
     response = JsonResponse(body.model_dump(), status=decision.status)
     if decision.status == 401:
         response["WWW-Authenticate"] = WWW_AUTHENTICATE
     return response
+
+
+def _needs(needed: str | None) -> str:
+    return SUPERUSER_DESCRIPTION if needed == SUPERUSER_ONLY else f"needs {needed}"
 
 
 def internal_error(debug_id: str) -> JsonResponse:

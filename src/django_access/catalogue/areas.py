@@ -28,7 +28,10 @@ AREA_KEY_RE = re.compile(r"^[a-z_]+\.[a-z_]+$")
 
 # Pseudo-area of routes every active staff user reaches without a grant; never grantable.
 STAFF_BASELINE = "staff.baseline"
-# Roles, grants, tokens, audit and the Django admin site; only the built-in Administrator role holds it.
+# Pseudo-area of the Django admin site (D32): superusers only, no role opens it; never grantable, never in ``me``.
+SUPERUSER_ONLY = "superuser.only"
+PSEUDO_AREAS = frozenset({STAFF_BASELINE, SUPERUSER_ONLY})
+# Roles, grants, tokens and audit; only the built-in Administrator role holds it.
 ACCESS_MANAGE = "access.manage"
 # Deleting a product (SKU): write only, apart from editing the catalogue (pim.products).
 PIM_PRODUCT_DELETE = "pim.product_delete"

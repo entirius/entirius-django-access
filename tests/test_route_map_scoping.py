@@ -140,15 +140,16 @@ def admin_routes() -> dict:
         ("admin/password_change/", "staff.baseline"),
         ("admin/password_change/done/", "staff.baseline"),
         ("admin/jsi18n/", "staff.baseline"),
-        ("admin/", "access.manage"),
-        ("admin/auth/user/", "access.manage"),
-        ("admin/auth/user/<path:object_id>/change/", "access.manage"),
-        ("admin/django_access/role/", "access.manage"),
+        ("admin/", "superuser.only"),
+        ("admin/auth/user/", "superuser.only"),
+        ("admin/auth/user/<path:object_id>/change/", "superuser.only"),
+        ("admin/django_access/role/", "superuser.only"),
     ],
 )
 def test_django_admin_site_is_gated(route, area):
     info = classify(route, admin_routes()[route])
     assert (info.owner, info.admin, info.area, info.self_auth, info.auth) == ("django", True, area, True, ())
+    assert info.area_source == "framework"
 
 
 def test_every_django_admin_route_is_gated_and_marked_views_self_auth():
@@ -169,14 +170,14 @@ def test_a_module_view_on_the_admin_site_is_framework_but_not_self_auth():
     assert (callback.__module__, info.owner, info.area, info.self_auth) == (
         "django_reviews.admin",
         "django",
-        "access.manage",
+        "superuser.only",
         False,
     )
 
 
 def test_an_unwrapped_view_under_admin_is_not_self_auth():
     info = classify("admin/export/", views.owned("django_pim", views.download))
-    assert (info.owner, info.admin, info.area, info.self_auth) == ("django", True, "access.manage", False)
+    assert (info.owner, info.admin, info.area, info.self_auth) == ("django", True, "superuser.only", False)
 
 
 def test_openapi_view_with_admin_permission_is_staff_baseline():

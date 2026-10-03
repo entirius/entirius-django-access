@@ -117,6 +117,14 @@ def test_checks_fire_on_a_broken_declaration(faq_stub, monkeypatch):
     )
 
 
+@pytest.mark.parametrize("pseudo", ["staff.baseline", "superuser.only"])
+def test_a_rule_may_name_a_pseudo_area_but_no_area_may_take_its_key(faq_stub, monkeypatch, pseudo):
+    monkeypatch.setattr(faq_stub, "access_route_rules", [{"pattern": "api/faq/v2/admin/", "area": pseudo}])
+    monkeypatch.setattr(faq_stub, "access_areas", [{"key": pseudo, "label": "Pseudo"}])
+    registry.reset()
+    assert ids(catalogue_is_consistent()) == ["django_access.E004"]
+
+
 def test_checks_fire_on_an_area_override_naming_an_unknown_area(monkeypatch):
     """E.g. django_pim declaring its own areas without pim.product_delete: the SKU delete would refuse every staff user."""
     monkeypatch.setattr(checks, "AREA_OVERRIDES", (AreaOverride("api/pim/v2/admin/", "DELETE", "pim.ghost"),))
