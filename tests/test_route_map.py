@@ -128,6 +128,11 @@ def test_classify_is_memoized_by_route():
         ("api/lookup/v2/admin/search/", "POST", "lookup.search:read"),  # POST-read override
         ("api/lookup/v2/admin/search/", "DELETE", "lookup.search:write"),  # write on a read-only area: never held
         ("api/leads/v2/admin/gdpr/export/", "POST", "leads.gdpr:write"),
+        (  # a paid AI call: write, never a POST-read
+            "api/communicator/v2/admin/<str:channel_idx>/templates/<int:pk>/test-generate/",
+            "POST",
+            "communicator.content:write",
+        ),
         ("api/returns/attachments/order_return/<uuid:pk>", "GET", "returns.attachments:write"),
         ("api/returns/attachments/order_return/<uuid:pk>", "HEAD", "returns.attachments:write"),  # write-only area
         (
@@ -143,7 +148,7 @@ def test_required_permission(route, method, expected):
     assert required_permission(classify(route, served(route)), method) == expected
 
 
-# The 19 r01 §9 routes as the zeno resolver builds them, with the method and level the override gives.
+# The 18 r01 §9 routes as the zeno resolver builds them, with the method and level the override gives.
 OVERRIDDEN = [
     *(
         (route, "POST", "read")
@@ -157,7 +162,6 @@ OVERRIDDEN = [
             "api/atlas/v2/admin/sources/<slug:source_idx>/feeds/<slug:idx>/test/",
             "api/atlas/v2/admin/sources/<slug:source_idx>/mapping-profiles/<slug:idx>/validate/",
             "api/munin/v2/health/check/",
-            "api/communicator/v2/admin/<str:channel_idx>/templates/<int:pk>/test-generate/",
         )
     ),
     ("api/leads/v2/admin/gdpr/export/", "POST", "write"),
@@ -177,8 +181,8 @@ OVERRIDDEN = [
 ]
 
 
-def test_the_19_overrides():
-    assert len(OVERRIDDEN) == 19
+def test_the_18_overrides():
+    assert len(OVERRIDDEN) == 18
     for route, method, level in OVERRIDDEN:
         assert classify(route, views.download).method_levels == {method: level}, route
 
@@ -196,6 +200,7 @@ def test_every_method_override_is_listed():
         "api/pricemanager/v2/admin/<str:channel_idx>/prices/<path:sku>/",
         f"api-admin/contentdb/<str:version>/published/{CT}/(?P<uid>[^/.]+)/$",
         "api/leads/v2/admin/gdpr/erase/",
+        "api/communicator/v2/admin/<str:channel_idx>/templates/<int:pk>/test-generate/",  # a paid AI call: write
     ],
 )
 def test_neighbours_are_not_overridden(route):

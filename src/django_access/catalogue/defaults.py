@@ -206,8 +206,9 @@ def _overrides(method: str, level: str, *patterns: str) -> tuple[MethodOverride,
 
 _FEED_CHECKS = f"{SEGMENT}(?:feeds/{SEGMENT}test|mapping-profiles/{SEGMENT}validate)/$"
 
-# r01 §9 + README § Contract: 10 POST-reads → read; leads GDPR export POST, 6 GET PII exports/downloads and the 2
-# contentdb GET …/published/ → write (Viewer and Editor never export PII; reading publish state is publish).
+# r01 §9 + README § Contract: 9 POST-reads → read; leads GDPR export POST, 6 GET PII exports/downloads and the 2
+# contentdb GET …/published/ → write (Viewer and Editor never export PII; reading publish state is publish). The
+# communicator template test-generate POST is not a read: it calls the AI toolbox, which costs money (FIX-06).
 METHOD_OVERRIDES: tuple[MethodOverride, ...] = (
     *_overrides(
         "POST",
@@ -218,7 +219,6 @@ METHOD_OVERRIDES: tuple[MethodOverride, ...] = (
         f"api/suppliers/v2/admin/suppliers/{_FEED_CHECKS}",
         f"api/atlas/v2/admin/sources/{_FEED_CHECKS}",
         "api/munin/v2/health/check/$",
-        f"api/communicator/v2/admin/{SEGMENT}templates/{SEGMENT}test-generate/$",
     ),
     *_overrides("POST", WRITE, "api/leads/v2/admin/gdpr/export/$"),
     *_overrides(
@@ -248,8 +248,10 @@ class AreaOverride:
 
 # Memo 09b: the routes that delete a PIM SKU need pim.product_delete:write — the PIM product DELETE (both roots) and
 # the RealProduct merge, which deletes the loser SKU in every channel. Media, file and link deletes stay on pim.products.
+# A feature-set DELETE cascades to every product of the set in every channel, so it is a SKU delete too (FIX-06).
 AREA_OVERRIDES: tuple[AreaOverride, ...] = (
     AreaOverride(f"api/pim/(?:v2/)?admin/{SEGMENT}products/{SEGMENT}$", "DELETE", PIM_PRODUCT_DELETE),
+    AreaOverride(f"api/pim/(?:v2/)?admin/{_OPTIONAL_CHANNEL}feature-sets/{SEGMENT}$", "DELETE", PIM_PRODUCT_DELETE),
     AreaOverride("api/(?:atlas|suppliers)/v2/admin/realproducts/merge-by-ean/$", "POST", PIM_PRODUCT_DELETE),
 )
 

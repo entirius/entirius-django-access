@@ -2,7 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Deleting a SKU is its own permission, ``pim.product_delete:write`` (plan 09b): the area, the route overrides, the
-built-in roles, the gate on both PIM roots and the RealProduct merge, ``me`` and the catalogue."""
+built-in roles, the gate on both PIM roots, the feature-set delete (it cascades to the set's products), the RealProduct
+merge, ``me`` and the catalogue."""
 
 import io
 import json
@@ -75,6 +76,11 @@ def routes() -> dict:
         ("<str:channel_idx>/products/<path:sku>/pictures/<int:pk>/", "DELETE", "pim.products:write"),
         ("<str:channel_idx>/products/<path:sku>/files/<int:pk>/", "DELETE", "pim.products:write"),
         ("<str:channel_idx>/products/<path:sku>/links/<int:pk>/", "DELETE", "pim.products:write"),
+        ("feature-sets/<str:idx>/", "DELETE", NEEDED),
+        ("feature-sets/<str:idx>/", "PATCH", "pim.schema:write"),
+        ("<str:channel_idx>/feature-sets/<str:idx>/", "DELETE", NEEDED),
+        ("<str:channel_idx>/feature-sets/<str:idx>/", "GET", "pim.schema:read"),
+        ("feature-sets/<str:idx>/features/<str:feature_idx>/", "DELETE", "pim.schema:write"),
     ],
 )
 @ROOTS
@@ -98,6 +104,9 @@ def test_audit_names_the_permission_for_exactly_those_routes(tmp_path):
     deleting = {route: areas for route, areas in named.items() if areas}
     assert deleting == {
         **{f"{root}<str:channel_idx>/products/<path:sku>/": {"DELETE": PIM_PRODUCT_DELETE} for root in urls.PIM_ROOTS},
+        **{
+            root + route: {"DELETE": PIM_PRODUCT_DELETE} for root in urls.PIM_ROOTS for route in urls.FEATURE_SET_ROUTES
+        },
         **{merge[1:]: {"POST": PIM_PRODUCT_DELETE} for merge in urls.MERGES},
     }
 
@@ -136,6 +145,14 @@ def test_custom_role_with_the_delete_permission_deletes(custom, root):
 @ROOTS
 def test_media_file_and_link_delete_need_only_products_write(custom, template, root):
     assert custom("pim.products:write").delete(url(template, root)).status_code == 200
+
+
+@ROOTS
+def test_feature_set_delete_needs_the_delete_permission(person, api_as, root):
+    detail = refusal(api_as(person("editor")).delete(url(urls.FEATURE_SET, root)))
+    assert detail["description"] == f"needs {NEEDED}"
+    assert api_as(person("editor")).delete(url(urls.FEATURE_SET_FEATURE, root)).status_code == 200
+    assert api_as(person("manager")).delete(url(urls.FEATURE_SET, root)).status_code == 200
 
 
 @pytest.mark.parametrize("merge", urls.MERGES)

@@ -132,7 +132,7 @@ DEFAULT_AREAS: tuple[Area, ...] = (
     ),
     *_module(
         "django_communicator",
-        ("communicator.review", "Draft review queue"),
+        ("communicator.review", "Draft review queue", READ_WRITE, (PII,)),
         ("communicator.content", "Templates, sequences and footers", READ_WRITE, (AI_COST,)),
         ("communicator.conversations", "Outbox, threads, replies and suppressions", READ_WRITE, (PII,)),
         ("communicator.settings", "Channel, send policy and mailbox", READ_WRITE, (SECRET,)),

@@ -36,6 +36,11 @@ def test_areas_are_valid():
         assert item.label and item.module.startswith("django_"), item.key
 
 
+def test_the_review_queue_is_pii():
+    """It returns the recipient's e-mail, name and the message body (FIX-06)."""
+    assert "pii" in next(item.sensitive for item in DEFAULT_AREAS if item.key == "communicator.review")
+
+
 def test_read_only_and_write_only_areas():
     levels = {item.key: item.levels for item in DEFAULT_AREAS}
     assert [key for key, value in levels.items() if value == ("read",)] == [
