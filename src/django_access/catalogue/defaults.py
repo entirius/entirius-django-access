@@ -208,7 +208,7 @@ _FEED_CHECKS = f"{SEGMENT}(?:feeds/{SEGMENT}test|mapping-profiles/{SEGMENT}valid
 
 # r01 §9 + README § Contract: 9 POST-reads → read; leads GDPR export POST, 6 GET PII exports/downloads and the 2
 # contentdb GET …/published/ → write (Viewer and Editor never export PII; reading publish state is publish). The
-# communicator template test-generate POST is not a read: it calls the AI toolbox, which costs money (FIX-06).
+# communicator template test generation POST is not a read: it calls the AI toolbox, which costs money (FIX-06).
 METHOD_OVERRIDES: tuple[MethodOverride, ...] = (
     *_overrides(
         "POST",
