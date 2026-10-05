@@ -85,7 +85,7 @@ backups taken before it still hold the plaintext — expire them on the backup s
 ## Rotation and revocation
 
 - **Rotate** (`tokens/<id>/rotate/`, `access_token rotate`): a successor with the same application, scopes and pin;
-  the old token stays valid for `overlap_hours` (default 24, API 0–168). The successor gets the given `expires_at`
+  the old token stays valid for `overlap_hours` (default 24, 0–8760 from the API and the CLI). The successor gets the given `expires_at`
   or none — no inherited or capped lifetime (D31).
 - **When to rotate**: no token is forced to expire. Every token shows `age_days` and `rotation_due` (active and at
   least `ACCESS_TOKEN_ROTATION_DAYS`, default 365, old) in the API, `access_token list` (`age=<n>d`, `rotation due`)

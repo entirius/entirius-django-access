@@ -37,7 +37,7 @@
   permission requiring a user, no `get_authenticators`/`get_permissions`/`check_permissions` override; or a view the
   Django admin site marks itself); classes from `as_view` initkwargs first. The JSON report
   adds `foreign_rule_matches` (the audit fails on any), `admin_not_self_auth` and `non_admin` with an audience.
-- `catalogue.defaults.METHOD_OVERRIDES`: 10 POST-reads → read, leads GDPR export and 6 GET PII exports/downloads →
+- `catalogue.defaults.METHOD_OVERRIDES`: 9 POST-reads → read (communicator test-generate is a paid AI call: write), leads GDPR export and 6 GET PII exports/downloads →
   write, contentdb GET `…/published/` → `content.publish:write`. `returns.attachments` is write-only.
 - `manage.py access_routes [--check] [--json PATH]`.
 - System check `django_access.W002`: a `LocMemCache`/`DummyCache` default cache with `DEBUG=False` (permission
@@ -84,9 +84,9 @@
   not an `IntegrityError`.
 - Token API v2 under `api/access/v2/admin/`: `applications/` + `applications/<id>/` (list, create, PATCH `name`,
   `description`, `is_active`; no DELETE; a name in use → 409), `applications/<id>/tokens/` (list, issue),
-  `tokens/<id>/rotate/` (`overlap_hours` 0–168, default 24; revoked → 409) and `tokens/<id>/revoke/` (idempotent, one
+  `tokens/<id>/rotate/` (`overlap_hours` 0–8760, the service limit, default 24; revoked → 409) and `tokens/<id>/revoke/` (idempotent, one
   audit row). The raw value is only in the issue and rotate responses (`Cache-Control: no-store`, `Pragma: no-cache`);
-  no response carries `key_hash`; token rows show `state` `active` | `expired` | `revoked`, `age_days` and
+  no response carries `key_hash`; token rows show the effective `state` `active` | `expired` | `revoked` | `application inactive`, `age_days` and
   `rotation_due`. `services.tokens.update_application` (field whitelist,
   audited `application.update`) and `lifecycle_state`. The catalogue lists the token scopes.
 - `django_access.openapi.add_api_key_security`: drf-spectacular postprocessing hook adding the `ApiKeyAuth` scheme
@@ -126,8 +126,9 @@
   but the login pages; the gate answers every non-superuser staff user 403 `ACCESS_DENIED` (`superuser only`),
   Administrators included; a superuser's writes keep their `gate.bypass` row.
 - Area `pim.product_delete` (write only, flag `destructive`, 49 areas): `catalogue.defaults.AREA_OVERRIDES` make the
-  PIM product `DELETE` (both roots) and the atlas/suppliers `realproducts/merge-by-ean/` need it instead of
-  `pim.products` / `*.products`; `RouteInfo.method_areas`, `method_areas` in the route audit JSON. Administrator and
+  PIM product `DELETE` (both roots), the feature-set `DELETE` (it cascades to the set's products) and the
+  atlas/suppliers `realproducts/merge-by-ean/` need it instead of `pim.products` / `pim.schema` / `*.products`;
+  `RouteInfo.method_areas`, `method_areas` and `method_levels` in the route audit JSON. Administrator and
   Manager hold it, Editor does not. `E003` also fires on an area override naming an unknown area.
 - Module ownership: `django_access.testing.assert_routes_covered(app_label, urlconf=None, require_own=False)` for a
   module's own test suite (fails on `unmapped`, `foreign_rule`, `unknown_area`, and `defaults` with `require_own`:

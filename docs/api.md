@@ -56,14 +56,14 @@ grant → 409.
 | GET / PATCH | `admin/applications/<id>/` | PATCH: `name`, `description`, `is_active` (none, null or another field → 400) | 200; no DELETE (405) |
 | GET | `admin/applications/<id>/tokens/` | paging (newest first) | 200 token rows, never `raw` |
 | POST | `admin/applications/<id>/tokens/` | `scopes` (required), `name`, `channel_idx`, `expires_at` (aware, future, optional) | 201 token row + `raw` |
-| POST | `admin/tokens/<id>/rotate/` | `overlap_hours` (0–168, default 24), `expires_at` (default none) | 201 successor + `raw`; revoked → 409 |
+| POST | `admin/tokens/<id>/rotate/` | `overlap_hours` (0–8760, default 24), `expires_at` (default none) | 201 successor + `raw`; revoked → 409 |
 | POST | `admin/tokens/<id>/revoke/` | — | 200; already revoked → 200, no second audit row |
 | POST | `admin/tokens/<id>/expiry/` | `expires_at` (aware datetime, or `null` to clear; required) | 200 token row; revoked → 409; audited `token.expiry` |
 
 Token row: `id, name, prefix, last_four, scopes, channel_idx, expires_at, last_used_at, revoked_at, legacy,
-legacy_source, state, age_days, rotation_due` (`state`: `active` | `expired` | `revoked` — the token's own state;
-check the application's `is_active` next to it; `age_days`: whole days since issue or import; `rotation_due`: active
-and at least `token_rotation_days` old — rotate it, nothing is refused). A legacy row has `legacy: true`, a 6-character `prefix` (`legacy` with an empty
+legacy_source, state, age_days, rotation_due` (`state`: `active` | `expired` | `revoked` | `application inactive` —
+the effective state: an otherwise active token of an inactive application fails every call; `age_days`: whole days
+since issue or import; `rotation_due`: active and at least `token_rotation_days` old — rotate it, nothing is refused). A legacy row has `legacy: true`, a 6-character `prefix` (`legacy` with an empty
 `last_four` for a short secret) and its `legacy_source` ids.
 
 `raw` is in the create and rotate responses only, with `Cache-Control: no-store` and `Pragma: no-cache`. No response

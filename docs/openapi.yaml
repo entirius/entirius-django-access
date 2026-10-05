@@ -1762,6 +1762,7 @@ components:
       - active
       - expired
       - revoked
+      - application inactive
       type: string
     TokenCreateRequest:
       additionalProperties: false
@@ -1925,8 +1926,8 @@ components:
         state:
           allOf:
           - $ref: '#/components/schemas/StateEnum'
-          description: The token's own state; an inactive application stops its active
-            tokens too (`is_active`).
+          description: 'The effective state: `application inactive` for an otherwise
+            active token of an inactive application — it fails every call.'
           title: State
         age_days:
           description: Whole days since the token was issued (or imported).
@@ -1962,7 +1963,7 @@ components:
         overlap_hours:
           default: 24
           description: Hours the old token keeps working (0 = stops at once).
-          maximum: 168
+          maximum: 8760
           minimum: 0
           title: Overlap Hours
           type: integer
@@ -2047,8 +2048,8 @@ components:
         state:
           allOf:
           - $ref: '#/components/schemas/StateEnum'
-          description: The token's own state; an inactive application stops its active
-            tokens too (`is_active`).
+          description: 'The effective state: `application inactive` for an otherwise
+            active token of an inactive application — it fails every call.'
           title: State
         age_days:
           description: Whole days since the token was issued (or imported).

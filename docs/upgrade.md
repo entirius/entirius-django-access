@@ -12,6 +12,7 @@ is in `install.md`.
 manage.py access_routes --unmapped                  # admin routes without an area: route, owner, methods; exit 1
 manage.py access_import_legacy_keys --check         # after migrate: every legacy key present as a token; exit 1
 manage.py check --deploy --fail-level ERROR         # E011: the gate enforces over unmapped admin routes
+manage.py access_legacy_report                      # after the upgrade: plaintext keys stay until the purge (D28)
 ```
 
 An unmapped admin route answers 403 `UNMAPPED_ROUTE` to everyone but superusers once the gate enforces. `E011` stops
