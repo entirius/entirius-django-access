@@ -143,6 +143,13 @@
 - Upgrade preflight (D29): `manage.py access_routes --unmapped` (route, owner, methods; exit 1 when any) and the
   deploy check `django_access.E011` (`check --deploy`: the gate enforces over unmapped admin routes); guide
   `docs/upgrade.md`.
+- `services.login_guard`: the failed-login counter of the service's password logins, moved from volkanos
+  (`api/token/`) — `login_username(request)`, `refuse_when_blocked(request, username)` (DRF `Throttled`),
+  `record_failure`, `clear`; per username + address and per address, hashed cache keys, settings
+  `AUTH_TOKEN_FAILURE_WINDOW_S` / `AUTH_TOKEN_MAX_FAILURES_PER_USER_IP` / `AUTH_TOKEN_MAX_FAILURES_PER_IP` (900 / 10 /
+  100).
+- `verify_api_key` is fail-closed on pins: a pinned token is refused where the caller passes `channel_idx=None`.
+- OpenAPI tags in Title Case (`Access Grants`, …); `GET me` has a description.
 
 ## 0.1.0 (unreleased)
 

@@ -46,6 +46,7 @@ src/django_access/
 ├── services/     access_service (every role/grant mutation + audit + lockout guard)  permissions (cached)
 │                 route_map (classify, audit_routes)  gate (decide)  tokens (issue, rotate, revoke, verify_api_key)
 │                 legacy (import, legacy_report, purge_legacy_sources)  directory (read queries of the API)
+│                 login_guard (failed-login counter of the service's password logins)
 ├── schemas/      requests.py  responses.py (Pydantic, extra="forbid")
 ├── api/          me.py  permissions.py (IsStaffUser, HasAreaPermission)  admin/ (urls, thin views)
 └── management/commands/  access_routes  access_token  access_import_legacy_keys  access_legacy_report

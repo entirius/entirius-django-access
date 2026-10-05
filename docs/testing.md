@@ -28,6 +28,7 @@ names and key fields — the real modules are not installed here. The `legacy_ro
 | `test_gate.py` | the gate decision table, modes, bypass audit |
 | `test_product_delete.py` | `pim.product_delete`: built-in roles, both PIM roots, the RealProduct merge, media/file/link deletes, `me`, the audit report |
 | `test_tokens.py` / `test_access_token_command.py` | issue, rotate, revoke, verify, expiry rules, the CLI |
+| `test_login_guard.py` | failed-login counter: per username + address, per address, clear, hashed keys |
 | `test_token_rotation.py` | `age_days` / `rotation_due` (D31) in the service, API, CLI and legacy report; `token_rotation_days` in the catalogue |
 | `test_admin_api.py` / `test_me_api.py` / `test_token_api.py` | every endpoint: auth matrix, bodies, conflicts, whitelists |
 | `test_openapi.py` | `spectacular --validate --fail-on-warn`, the `ApiKeyAuth` hook |
