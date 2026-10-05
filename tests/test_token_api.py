@@ -155,10 +155,12 @@ def test_rotate_keeps_the_old_token_for_the_overlap(admin_api, issue, key_reques
     assert (new["name"], new["channel_idx"], new["scopes"]) == ("shop", "emporium", ["checkout.storefront"])
     old.refresh_from_db()
     assert old.expires_at == clock.now + timedelta(hours=2)
-    assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=old_raw), "checkout.storefront") is not None
+    assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=old_raw), "checkout.storefront", "emporium") is not None
     clock.advance(hours=2)
-    assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=old_raw), "checkout.storefront") is None
-    assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=new["raw"]), "checkout.storefront").pk == new["id"]
+    assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=old_raw), "checkout.storefront", "emporium") is None
+    assert (
+        tokens.verify_api_key(key_request(HTTP_X_API_KEY=new["raw"]), "checkout.storefront", "emporium").pk == new["id"]
+    )
 
 
 def test_rotate_defaults_to_24_hours(admin_api, issue, clock):
