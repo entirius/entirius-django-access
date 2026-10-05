@@ -22,7 +22,7 @@ from django_access.schemas.requests import GrantCreateRequest, GrantListQuery
 from django_access.schemas.responses import GrantListResponse, GrantResponse
 from django_access.services import access_service, directory
 
-_TAGS = ["Access grants"]
+_TAGS = ["Access Grants"]
 _FILTERS = [OpenApiParameter("role", str), OpenApiParameter("user_id", int), OpenApiParameter("group_id", int)]
 
 

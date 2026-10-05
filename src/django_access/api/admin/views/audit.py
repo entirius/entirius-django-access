@@ -29,7 +29,7 @@ def dump(entry: AuditEntry) -> dict:
 
 class AuditListView(AdminView):
     @extend_schema(
-        tags=["Access audit"],
+        tags=["Access Audit"],
         operation_id="access_audit_list",
         summary="Audit entries, newest first",
         parameters=[*_FILTERS, *PAGE_PARAMETERS],

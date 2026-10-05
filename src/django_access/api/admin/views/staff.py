@@ -16,7 +16,7 @@ from django_access.schemas.requests import PageQuery, StaffListQuery
 from django_access.schemas.responses import GroupListResponse, StaffDetailResponse, StaffListResponse
 from django_access.services import directory
 
-_TAGS = ["Access staff"]
+_TAGS = ["Access Staff"]
 
 
 def staff_body(user) -> dict:

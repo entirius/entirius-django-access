@@ -26,7 +26,7 @@ from django_access.schemas.requests import PageQuery, TokenCreateRequest, TokenE
 from django_access.schemas.responses import TokenListResponse, TokenResponse, TokenSecretResponse
 from django_access.services import tokens
 
-_TAGS = ["Access tokens"]
+_TAGS = ["Access Tokens"]
 _SHOWN_ONCE = "The raw value is in this response only (`Cache-Control: no-store`)."
 
 

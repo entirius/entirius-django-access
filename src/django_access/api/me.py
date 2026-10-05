@@ -19,9 +19,13 @@ class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        tags=["Access me"],
+        tags=["Access Me"],
         operation_id="access_me",
         summary="The current user's roles and effective area permissions",
+        description=(
+            "Any authenticated user: staff get the gate mode, granted roles and effective area permissions; a customer "
+            "gets the user block only."
+        ),
         responses={200: MeResponse, 401: None},
     )
     def get(self, request: Request) -> Response:

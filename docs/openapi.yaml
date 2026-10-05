@@ -19,7 +19,7 @@ paths:
         schema:
           type: integer
       tags:
-      - Access applications
+      - Access Applications
       security:
       - jwtAuth: []
       responses:
@@ -42,7 +42,7 @@ paths:
       description: 409 for a name in use.
       summary: Create an application
       tags:
-      - Access applications
+      - Access Applications
       requestBody:
         content:
           application/json:
@@ -86,7 +86,7 @@ paths:
           type: integer
         required: true
       tags:
-      - Access applications
+      - Access Applications
       security:
       - jwtAuth: []
       responses:
@@ -116,7 +116,7 @@ paths:
           type: integer
         required: true
       tags:
-      - Access applications
+      - Access Applications
       requestBody:
         content:
           application/json:
@@ -167,7 +167,7 @@ paths:
         schema:
           type: integer
       tags:
-      - Access tokens
+      - Access Tokens
       security:
       - jwtAuth: []
       responses:
@@ -197,7 +197,7 @@ paths:
           type: integer
         required: true
       tags:
-      - Access tokens
+      - Access Tokens
       requestBody:
         content:
           application/json:
@@ -265,7 +265,7 @@ paths:
           format: date-time
         description: Created at or before (ISO 8601 with offset).
       tags:
-      - Access audit
+      - Access Audit
       security:
       - jwtAuth: []
       responses:
@@ -290,7 +290,7 @@ paths:
       summary: Areas by module, the built-in roles with their computed permissions,
         and the token scopes
       tags:
-      - Access catalogue
+      - Access Catalogue
       security:
       - jwtAuth: []
       responses:
@@ -335,7 +335,7 @@ paths:
         schema:
           type: integer
       tags:
-      - Access grants
+      - Access Grants
       security:
       - jwtAuth: []
       responses:
@@ -359,7 +359,7 @@ paths:
         staff → 400; a duplicate → 409.
       summary: Grant a role to one active staff user or one group
       tags:
-      - Access grants
+      - Access Grants
       requestBody:
         content:
           application/json:
@@ -403,7 +403,7 @@ paths:
           type: integer
         required: true
       tags:
-      - Access grants
+      - Access Grants
       security:
       - jwtAuth: []
       responses:
@@ -434,7 +434,7 @@ paths:
         schema:
           type: integer
       tags:
-      - Access staff
+      - Access Staff
       security:
       - jwtAuth: []
       responses:
@@ -467,7 +467,7 @@ paths:
         schema:
           type: integer
       tags:
-      - Access roles
+      - Access Roles
       security:
       - jwtAuth: []
       responses:
@@ -491,7 +491,7 @@ paths:
         key in use (built-in included).
       summary: Create a custom role
       tags:
-      - Access roles
+      - Access Roles
       requestBody:
         content:
           application/json:
@@ -535,7 +535,7 @@ paths:
           type: integer
         required: true
       tags:
-      - Access roles
+      - Access Roles
       security:
       - jwtAuth: []
       responses:
@@ -565,7 +565,7 @@ paths:
           type: integer
         required: true
       tags:
-      - Access roles
+      - Access Roles
       requestBody:
         content:
           application/json:
@@ -607,7 +607,7 @@ paths:
           type: integer
         required: true
       tags:
-      - Access roles
+      - Access Roles
       security:
       - jwtAuth: []
       responses:
@@ -642,7 +642,7 @@ paths:
         schema:
           type: string
       tags:
-      - Access staff
+      - Access Staff
       security:
       - jwtAuth: []
       responses:
@@ -672,7 +672,7 @@ paths:
           type: integer
         required: true
       tags:
-      - Access staff
+      - Access Staff
       security:
       - jwtAuth: []
       responses:
@@ -703,7 +703,7 @@ paths:
           type: integer
         required: true
       tags:
-      - Access tokens
+      - Access Tokens
       requestBody:
         content:
           application/json:
@@ -748,7 +748,7 @@ paths:
           type: integer
         required: true
       tags:
-      - Access tokens
+      - Access Tokens
       security:
       - jwtAuth: []
       responses:
@@ -779,7 +779,7 @@ paths:
           type: integer
         required: true
       tags:
-      - Access tokens
+      - Access Tokens
       requestBody:
         content:
           application/json:
@@ -813,9 +813,11 @@ paths:
   /api/access/v2/me/:
     get:
       operationId: access_me
+      description: 'Any authenticated user: staff get the gate mode, granted roles
+        and effective area permissions; a customer gets the user block only.'
       summary: The current user's roles and effective area permissions
       tags:
-      - Access me
+      - Access Me
       security:
       - jwtAuth: []
       responses:

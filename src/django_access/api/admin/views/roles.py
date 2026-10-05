@@ -22,7 +22,7 @@ from django_access.schemas.requests import PageQuery, RoleCreateRequest, RoleUpd
 from django_access.schemas.responses import RoleDetailResponse, RoleListResponse, RoleResponse
 from django_access.services import access_service, directory, permissions
 
-_TAGS = ["Access roles"]
+_TAGS = ["Access Roles"]
 
 
 def dump(role: Role) -> dict:

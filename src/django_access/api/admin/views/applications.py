@@ -21,7 +21,7 @@ from django_access.schemas.requests import ApplicationCreateRequest, Application
 from django_access.schemas.responses import ApplicationListResponse, ApplicationResponse
 from django_access.services import tokens
 
-_TAGS = ["Access applications"]
+_TAGS = ["Access Applications"]
 
 
 def dump(application: Application) -> dict:

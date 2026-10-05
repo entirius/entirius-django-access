@@ -14,7 +14,7 @@ from django_access.services import directory
 
 class CatalogueView(StaffView):
     @extend_schema(
-        tags=["Access catalogue"],
+        tags=["Access Catalogue"],
         operation_id="access_catalogue",
         summary="Areas by module, the built-in roles with their computed permissions, and the token scopes",
         responses={200: CatalogueResponse, **ERROR_RESPONSES},
