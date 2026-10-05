@@ -391,6 +391,7 @@ def _admin_entry(info: RouteInfo) -> dict:
         "owner": info.owner,
         "area": info.area,
         "area_source": info.area_source,
+        "method_levels": info.method_levels,
         "method_areas": info.method_areas,
         "self_auth": info.self_auth,
         "auth": info.auth,

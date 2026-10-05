@@ -202,7 +202,7 @@ def test_report_fields(tmp_path):
     report = tmp_path / "routes.json"
     audit_routes(io.StringIO(), str(report))
     data = json.loads(report.read_text())
-    assert all({"self_auth", "auth"} <= entry.keys() for entry in data["admin"])
+    assert all({"self_auth", "auth", "method_levels"} <= entry.keys() for entry in data["admin"])
     assert "api/returns/attachments/order_return/<uuid:pk>" in data["admin_not_self_auth"]
     audiences = {entry["route"]: entry["audience"] for entry in data["non_admin"]}
     assert audiences == {

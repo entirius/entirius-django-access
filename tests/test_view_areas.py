@@ -51,6 +51,13 @@ def test_the_route_audit_names_the_source_of_every_admin_route(tmp_path):
     assert all(entry["area_source"] in route_map.AREA_SOURCES for entry in json.loads(report.read_text())["admin"])
 
 
+def test_the_route_audit_shows_the_view_levels(tmp_path):
+    report = tmp_path / "routes.json"
+    route_map.audit_routes(StringIO(), str(report))
+    levels = {entry["route"]: entry["method_levels"] for entry in json.loads(report.read_text())["admin"]}
+    assert levels["api/leads/v2/admin/gdpr/export/"] == {"POST": "read"}
+
+
 def test_access_levels_beat_a_method_override():
     route = info("api/leads/v2/admin/gdpr/export/")
     assert route_map.required_permission(route, "POST") == "leads.gdpr:read"
