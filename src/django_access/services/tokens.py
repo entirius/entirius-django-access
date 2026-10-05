@@ -235,9 +235,10 @@ def token_state(token: ApiToken, now: datetime) -> str:
 
 
 def _allows(token: ApiToken, scope: str, channel_idx: str | None) -> bool:
-    """Default-deny: an empty scope list allows nothing; a pinned token only on its own channel or a channel-less route."""
-    pinned_elsewhere = channel_idx is not None and token.channel_idx not in (None, str(channel_idx))
-    return scope in token.scopes and not pinned_elsewhere
+    """Default-deny: an empty scope list allows nothing; a pinned token only on its own channel — never where the caller
+    passes no channel, since the pin cannot be checked there."""
+    pin_holds = token.channel_idx is None or (channel_idx is not None and token.channel_idx == str(channel_idx))
+    return scope in token.scopes and pin_holds
 
 
 def _presented(request) -> str | None:
@@ -257,7 +258,9 @@ def _touch(token: ApiToken, now: datetime) -> None:
 
 
 def verify_api_key(request, scope: str, channel_idx: str | None = None) -> ApiToken | None:
-    """The token presented by ``request`` when it may use ``scope`` on ``channel_idx``, else ``None`` (any reason)."""
+    """The token presented by ``request`` when it may use ``scope`` on ``channel_idx``, else ``None`` (any reason).
+
+    ``channel_idx=None`` (a route without a channel) accepts unpinned tokens only: a pinned token is refused there."""
     presented = _presented(request)
     if presented is None:
         return None

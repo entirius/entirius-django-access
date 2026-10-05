@@ -84,6 +84,7 @@ def failures(issue, application, system, clock):
         "wrong scope": (valid, "contact_forms.submit", None),
         "empty scopes": (empty, STOREFRONT, None),
         "channel mismatch": (valid, STOREFRONT, "other"),
+        "pinned without channel": (valid, STOREFRONT, None),
     }
 
 
@@ -95,6 +96,7 @@ FAILURE_KINDS = (
     "wrong scope",
     "empty scopes",
     "channel mismatch",
+    "pinned without channel",
 )
 
 

@@ -104,13 +104,23 @@ def test_empty_scopes_grant_nothing(issue, key_request):
     assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=raw), STOREFRONT) is None
 
 
-def test_channel_pinning(issue, key_request):
-    pinned, pinned_raw = issue(channel_idx="emporium")
-    unpinned, unpinned_raw = issue()
-    assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=pinned_raw), STOREFRONT, "emporium") == pinned
-    assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=pinned_raw), STOREFRONT, "other") is None
-    assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=pinned_raw), STOREFRONT) == pinned
-    assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=unpinned_raw), STOREFRONT, "emporium") == unpinned
+def test_pinned_token_passes_on_its_own_channel_only(issue, key_request):
+    pinned, raw = issue(channel_idx="emporium")
+    assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=raw), STOREFRONT, "emporium") == pinned
+    assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=raw), STOREFRONT, "other") is None
+
+
+def test_pinned_token_is_refused_where_no_channel_is_passed(issue, key_request):
+    """Fail-closed: a pin that cannot be checked is a refusal."""
+    _, raw = issue(channel_idx="emporium")
+    assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=raw), STOREFRONT) is None
+    assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=raw), STOREFRONT, None) is None
+
+
+def test_unpinned_token_passes_on_every_channel_and_without_one(issue, key_request):
+    unpinned, raw = issue()
+    for channel_idx in ("emporium", "other", None):
+        assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=raw), STOREFRONT, channel_idx) == unpinned
 
 
 def test_last_used_is_written_once_per_interval(issue, key_request, clock, settings):

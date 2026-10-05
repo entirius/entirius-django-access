@@ -92,7 +92,8 @@ shown once. The database keeps its SHA-256 (`key_hash`, unique), `prefix` (12 ch
 - **Lifetime** (D31): an expiry is optional for every scope and has no maximum; a past date is refused (revoke
   instead). Every token shows its age (`age_days`) and `rotation_due` — active and at least
   `ACCESS_TOKEN_ROTATION_DAYS` (365) old. A recommendation only: nothing is refused, logged or audited for age.
-- **Channel pin**: a pinned token passes only where the route's channel equals the pin. A pin on an erase token
+- **Channel pin**: a pinned token passes only where the route's channel equals the pin; a caller that passes no
+  channel (`channel_idx=None`) cannot check it, so a pinned token is refused there. A pin on an erase token
   limits the URL channel, not the erase's reach — accounts and checkout erase by e-mail across channels.
 - `verify_api_key(request, scope, channel_idx=None)` reads `X-API-KEY` (alias `X-API-ADMIN-KEY`), runs one uncached
   query by hash and returns the token or `None` — one answer for unknown, expired, revoked, inactive application,
