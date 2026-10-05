@@ -37,7 +37,7 @@ def _fields(token: ApiToken) -> dict:
     """The response whitelist read off the row, plus the state, age and rotation flag — never ``key_hash``."""
     now = timezone.now()
     computed = {
-        "state": tokens.lifecycle_state(token, now),
+        "state": tokens.token_state(token, now),
         "age_days": tokens.token_age_days(token, now),
         "rotation_due": tokens.rotation_due(token, now),
     }
@@ -66,7 +66,7 @@ class ApplicationTokenListView(AdminView):
     def get(self, request: Request, pk: int) -> Response:
         parse(PageQuery, request.query_params.dict())
         application = self.one(Application.objects.all(), pk)
-        return self.paginated(request, application.tokens.all(), dump)
+        return self.paginated(request, application.tokens.select_related("application"), dump)
 
     @extend_schema(
         tags=_TAGS,

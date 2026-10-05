@@ -231,8 +231,9 @@ class TokenResponse(BaseModel):
         description="`<app>.<Model>#<pk>` of the legacy key (comma-separated when one secret had several rows), "
         "empty for an issued token."
     )
-    state: Literal["active", "expired", "revoked"] = Field(
-        description="The token's own state; an inactive application stops its active tokens too (`is_active`)."
+    state: Literal["active", "expired", "revoked", "application inactive"] = Field(
+        description="The effective state: `application inactive` for an otherwise active token of an inactive "
+        "application — it fails every call."
     )
     age_days: int = Field(description="Whole days since the token was issued (or imported).", examples=[12])
     rotation_due: bool = Field(

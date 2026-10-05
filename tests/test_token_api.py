@@ -111,6 +111,23 @@ def test_token_list_shows_states(admin_api, issue, system, clock):
     }
 
 
+def test_token_of_an_inactive_application_reads_inactive(admin_api, issue, application):
+    token, _ = issue()
+    application.is_active = False
+    application.save()
+    rows = admin_api.get(f"{URL}applications/{application.pk}/tokens/").json()["results"]
+    revoked = admin_api.post(f"{URL}tokens/{token.pk}/revoke/").json()
+    assert (rows[0]["state"], revoked["state"]) == ("application inactive", "revoked")
+
+
+def test_rotate_takes_the_service_overlap_limit(admin_api, issue, clock):
+    old, _ = issue()
+    body = {"overlap_hours": tokens.MAX_OVERLAP_HOURS}
+    assert admin_api.post(f"{URL}tokens/{old.pk}/rotate/", body, format="json").status_code == 201
+    old.refresh_from_db()
+    assert old.expires_at == clock.now + timedelta(hours=tokens.MAX_OVERLAP_HOURS)
+
+
 def test_token_list_of_unknown_application_is_404(admin_api):
     assert admin_api.get(f"{URL}applications/999/tokens/").status_code == 404
 
@@ -151,7 +168,7 @@ def test_rotate_defaults_to_24_hours(admin_api, issue, clock):
     assert old.expires_at == clock.now + timedelta(hours=24)
 
 
-@pytest.mark.parametrize("hours", [-1, 169, "x"])
+@pytest.mark.parametrize("hours", [-1, tokens.MAX_OVERLAP_HOURS + 1, "x"])
 def test_rotate_overlap_bounds(admin_api, issue, hours):
     old, _ = issue()
     response = admin_api.post(f"{URL}tokens/{old.pk}/rotate/", {"overlap_hours": hours}, format="json")

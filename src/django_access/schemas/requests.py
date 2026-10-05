@@ -3,19 +3,17 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Request schemas of the access admin API v2: format and shape only — every access rule is the service's call."""
 
-from datetime import datetime
 from typing import Annotated
 
-from django.utils import timezone
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from django_access.catalogue import registry
+from django_access.services.tokens import MAX_OVERLAP_HOURS
 
 ROLE_KEY_PATTERN = r"^[a-z][a-z0-9_-]{1,49}$"
 MAX_PAGE_SIZE = 100
 PermissionKey = Annotated[str, StringConstraints(max_length=128)]
 ScopeKey = Annotated[str, StringConstraints(max_length=64)]
-MAX_OVERLAP_HOURS = 168
 EXPIRY_DESCRIPTION = (
     "When the token stops working, or null for never; must be in the future. Optional for every scope and without a "
     "maximum: an old token is flagged `rotation_due` instead (`ACCESS_TOKEN_ROTATION_DAYS`)."
@@ -96,12 +94,6 @@ class AuditListQuery(PageQuery):
     to: AwareDatetime | None = Field(default=None, description="Created at or before.")
 
 
-def _check_future(value: datetime | None) -> datetime | None:
-    if value is not None and value <= timezone.now():
-        raise ValueError("must be in the future")
-    return value
-
-
 def _check_update_fields(request: BaseModel) -> None:
     """A PATCH body names at least one field and sets none of them to null."""
     if not request.model_fields_set:
@@ -149,8 +141,6 @@ class TokenCreateRequest(BaseModel):
     )
     expires_at: AwareDatetime | None = Field(default=None, description=EXPIRY_DESCRIPTION)
 
-    _future = field_validator("expires_at")(_check_future)
-
 
 class TokenRotateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -161,8 +151,6 @@ class TokenRotateRequest(BaseModel):
     expires_at: AwareDatetime | None = Field(
         default=None, description=f"Default: none — the successor inherits no expiry. {EXPIRY_DESCRIPTION}"
     )
-
-    _future = field_validator("expires_at")(_check_future)
 
 
 class TokenExpiryRequest(BaseModel):
