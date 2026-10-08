@@ -29,6 +29,7 @@ MANAGE_ENDPOINTS = [
     ("post", "grants/", {"role": VIEWER, "user_id": "{staff}"}),
     ("delete", "grants/{grant}/", None),
     ("get", "staff/", None),
+    ("post", "staff/", {"username": "newstaff", "email": "newstaff@example.com", "role": VIEWER}),
     ("get", "staff/{staff}/", None),
     ("get", "groups/", None),
     ("get", "audit/", None),

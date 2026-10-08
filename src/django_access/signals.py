@@ -1,16 +1,23 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""Cache invalidation for changes made outside ``access_service``: group membership, user flags, cascaded grants."""
+"""Cache invalidation for changes made outside ``access_service``: group membership, user flags, cascaded grants.
+
+``staff_user_created(sender=<user model>, user=…, actor=…)`` is sent by ``access_service.create_staff_user`` inside its
+transaction: a receiver that raises rolls the new account back (accounts adds the ``Customer`` row the CMS login needs).
+"""
 
 from django.contrib.auth import get_user_model
 from django.db.models.signals import m2m_changed, post_delete, pre_save
+from django.dispatch import Signal
 
 from django_access.models import Grant
 from django_access.services.permissions import bump_version
 
 ACCESS_FLAGS = ("is_staff", "is_superuser", "is_active")
 MEMBERSHIP_ACTIONS = frozenset({"post_add", "post_remove", "post_clear"})
+
+staff_user_created = Signal()
 
 
 def _membership_changed(sender, action: str, **kwargs) -> None:

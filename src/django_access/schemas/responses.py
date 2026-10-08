@@ -124,6 +124,13 @@ class StaffDetailResponse(StaffResponse):
     grants: list[GrantResponse] = Field(description="Grants to the user and to their groups.")
 
 
+class StaffCreateResponse(StaffDetailResponse):
+    password: str | None = Field(
+        description="The generated password — in this response only; null when the request gave one.",
+        examples=["<shown once>"],
+    )
+
+
 class StaffListResponse(BaseModel):
     count: int
     next: str | None

@@ -8,6 +8,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import TypeVar
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import QuerySet
 from django_utils.api.v2_errors import raise_pydantic_as_drf
 from drf_spectacular.utils import OpenApiParameter
@@ -84,8 +85,9 @@ def parse(schema: type[SchemaT], data: object) -> SchemaT:
 @contextmanager
 def service_errors() -> Iterator[None]:
     """Service refusals as v2 errors: ``access.manage`` in a custom role → 400 ``ACCESS_MANAGE_RESERVED``, an expiry in the
-    past → 400 ``EXPIRY_IN_PAST``, any other ``ValueError`` → 400, ``AccessConflict``
-    (built-in role, duplicate, lockout, revoked token) → 409 ``CONFLICT``."""
+    past → 400 ``EXPIRY_IN_PAST``, any other ``ValueError`` → 400, a Django ``ValidationError`` keyed by field (new staff
+    account) → 400 on those fields, ``AccessConflict`` (built-in role, duplicate, lockout, revoked token) → 409
+    ``CONFLICT``."""
     try:
         yield
     except ReservedPermission:
@@ -95,8 +97,17 @@ def service_errors() -> Iterator[None]:
         raise DrfValidationError({"expires_at": [DrfErrorDetail(str(exc), code=exc.code)]}) from None
     except ValueError as exc:
         raise DrfValidationError({"non_field_errors": [str(exc)]}) from None
+    except DjangoValidationError as exc:
+        raise DrfValidationError(exc.message_dict) from None
     except AccessConflict as exc:
         raise Conflict(str(exc)) from None
+
+
+def no_store(response: Response) -> Response:
+    """An answer that carries a secret shown once: never cached on the way back."""
+    response["Cache-Control"] = "no-store"
+    response["Pragma"] = "no-cache"
+    return response
 
 
 def client_ip(request: Request) -> str | None:

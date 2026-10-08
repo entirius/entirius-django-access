@@ -77,6 +77,23 @@ class GrantCreateRequest(BaseModel):
         return self
 
 
+class StaffCreateRequest(BaseModel):
+    """Shape only: the user model's own rules (username validator and length, e-mail format, uniqueness) and the password
+    validators are the service's call."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(min_length=1, max_length=254, description="Unique, case-insensitively.", examples=["jdoe"])
+    email: str = Field(min_length=3, max_length=254, description="Unique, case-insensitively.", examples=["jdoe@x.io"])
+    role: str = Field(pattern=ROLE_KEY_PATTERN, description="Key of an existing role.", examples=["editor"])
+    password: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=1024,
+        description="Omit to have one generated and returned once; a given password is never echoed.",
+    )
+
+
 class GrantListQuery(PageQuery):
     role: str | None = Field(default=None, pattern=ROLE_KEY_PATTERN, description="Role key filter.")
     user_id: int | None = Field(default=None, ge=1, description="Grants held by this user directly.")

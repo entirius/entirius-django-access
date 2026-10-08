@@ -18,6 +18,7 @@ OPERATIONS = {
         for path in ("applications/", "applications/{id}/tokens/", "grants/", "roles/")
         for method in ("get", "post")
     ),
+    ("post", ADMIN + "staff/"),
     ("get", ADMIN + "applications/{id}/"),
     ("patch", ADMIN + "applications/{id}/"),
     ("delete", ADMIN + "grants/{id}/"),

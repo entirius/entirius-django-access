@@ -6,15 +6,19 @@
 The guard wraps every change that can take access away (update, delete, revoke): when an access manager existed before
 and none is left after, it raises ``AccessLockout`` and the whole transaction rolls back. Creating a role or a grant
 cannot take access away, so it skips the two guard queries. ``access.manage`` is never part of a custom role, and grants
-go only to active staff users (or to a group).
+go only to active staff users (or to a group). ``create_staff_user`` adds an active staff account (never a superuser) with
+one role; no password value reaches an audit row, a log line or a cache key.
 """
 
+import secrets
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 from django.db.models import Q
 
@@ -23,10 +27,14 @@ from django_access.catalogue.areas import ACCESS_MANAGE
 from django_access.exceptions import AccessConflict, AccessLockout, ReservedPermission
 from django_access.models import AuditAction, AuditEntry, Grant, Role, RolePermission
 from django_access.services.permissions import ADMINISTRATOR, MANAGE_ACCESS_PERMISSION, bump_version
+from django_access.signals import staff_user_created
 
 SYSTEM_LABEL = "system"
 ACTOR_LABEL_LENGTH = AuditEntry._meta.get_field("actor_label").max_length
 _EDITABLE_ROLE_FIELDS = frozenset({"name", "description", "permissions"})
+# The only flags a created staff account gets — never read from a request.
+_STAFF_FLAGS = {"is_staff": True, "is_active": True, "is_superuser": False}
+GENERATED_PASSWORD_BYTES = 18
 
 
 @dataclass(frozen=True)
@@ -40,6 +48,16 @@ class Actor:
     def label(self) -> str:
         """Cut to ``AuditEntry.actor_label``: a longer username of a custom user model must not fail the audit insert."""
         return (self.user.get_username() if self.user else SYSTEM_LABEL)[:ACTOR_LABEL_LENGTH]
+
+
+@dataclass(frozen=True)
+class StaffInput:
+    """The whitelist of a new staff account: ``password`` None → the service generates one."""
+
+    username: str
+    email: str
+    role: str
+    password: str | None = None
 
 
 @dataclass(frozen=True)
@@ -94,13 +112,17 @@ def has_access_manager() -> bool:
     return users.filter(holders).exists()
 
 
+def _lock_administrator_row() -> None:
+    Role.objects.select_for_update().filter(key=ADMINISTRATOR, builtin=True).first()
+
+
 @contextmanager
 def _lockout_guard():
     """Refuse a change that takes away the last access manager (a database without one may still change).
 
     Guarded changes serialise on the Administrator row, so two concurrent revokes cannot each see the other manager.
     """
-    Role.objects.select_for_update().filter(key=ADMINISTRATOR, builtin=True).first()
+    _lock_administrator_row()
     had_manager = has_access_manager()
     yield
     if had_manager and not has_access_manager():
@@ -201,3 +223,67 @@ def revoke_grant(grant: Grant, actor: Actor) -> None:
     with _lockout_guard():
         grant.delete()
     _finish(AuditAction.GRANT_DELETE, actor, target, detail)
+
+
+def _staff_role(key: str) -> Role:
+    role = Role.objects.filter(key=key).first()
+    if role is None:
+        raise ValidationError({"role": ["Unknown role"]})
+    return role
+
+
+def _refuse_taken(data: StaffInput) -> None:
+    """Username and e-mail are unique across every user, case-insensitively."""
+    users = get_user_model()._default_manager
+    if users.filter(**{f"{get_user_model().USERNAME_FIELD}__iexact": data.username}).exists():
+        raise AccessConflict("The username is taken")
+    if users.filter(email__iexact=data.email).exists():
+        raise AccessConflict("The e-mail address is taken")
+
+
+def _checked_password(user, password: str) -> None:
+    """Django's password validators, reported on ``password`` — their messages never carry the value."""
+    try:
+        validate_password(password, user)
+    except ValidationError as exc:
+        raise ValidationError({"password": exc.messages}) from None
+
+
+def _new_staff(data: StaffInput, password: str):
+    """The user model's own field rules (username validator, length, e-mail format) via ``full_clean``."""
+    model = get_user_model()
+    user = model(**{model.USERNAME_FIELD: data.username}, email=data.email, **_STAFF_FLAGS)
+    user.full_clean(exclude=["password"])
+    _checked_password(user, password)
+    user.set_password(password)
+    with unique_or_conflict("The username or e-mail address is taken"):
+        user.save()
+    return user
+
+
+def _staff_detail(user, role: Role, generated: bool) -> dict:
+    return {
+        "username": user.get_username(),
+        "email": user.email,
+        "role": role.key,
+        "password": "generated" if generated else "given",
+    }
+
+
+@transaction.atomic
+def create_staff_user(data: StaffInput, actor: Actor) -> tuple[Any, str | None]:
+    """An active staff account with one role, audited ``staff.create``; ``(user, generated password or None)``.
+
+    Field errors are a Django ``ValidationError`` keyed by field, a taken username or e-mail ``AccessConflict``. The
+    signal goes out inside the transaction: a receiver that raises rolls the account back. Serialises on the
+    Administrator row like the guarded changes; a grant adds access, so the lockout guard does not run.
+    """
+    _lock_administrator_row()
+    role = _staff_role(data.role)
+    _refuse_taken(data)
+    generated = secrets.token_urlsafe(GENERATED_PASSWORD_BYTES) if data.password is None else None
+    user = _new_staff(data, data.password or generated)
+    record_audit(AuditAction.STAFF_CREATE, actor, user, _staff_detail(user, role, generated is not None))
+    grant_role(role, user=user, actor=actor)
+    staff_user_created.send(sender=type(user), user=user, actor=actor)
+    return user, generated

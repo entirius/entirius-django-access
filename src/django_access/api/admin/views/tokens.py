@@ -17,6 +17,7 @@ from django_access.api.admin.views._base import (
     WRITE_ERRORS,
     AdminView,
     actor,
+    no_store,
     parse,
     service_errors,
 )
@@ -49,10 +50,7 @@ def dump(token: ApiToken) -> dict:
 
 
 def shown_once(token: ApiToken, raw: str) -> Response:
-    response = Response(TokenSecretResponse(**_fields(token), raw=raw).model_dump(mode="json"), status=201)
-    response["Cache-Control"] = "no-store"
-    response["Pragma"] = "no-cache"
-    return response
+    return no_store(Response(TokenSecretResponse(**_fields(token), raw=raw).model_dump(mode="json"), status=201))
 
 
 class ApplicationTokenListView(AdminView):
