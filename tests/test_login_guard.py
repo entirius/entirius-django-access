@@ -17,6 +17,8 @@ def limits(settings):
     settings.AUTH_TOKEN_FAILURE_WINDOW_S = 60
     settings.AUTH_TOKEN_MAX_FAILURES_PER_USER_IP = 3
     settings.AUTH_TOKEN_MAX_FAILURES_PER_IP = 5
+    settings.AUTH_TOKEN_MAX_FAILURES_PER_USER = 50
+    settings.AUTH_TOKEN_USER_FAILURE_WINDOW_S = 3600
     cache.clear()
     yield
     cache.clear()
@@ -33,13 +35,25 @@ def _fail(request, username: str, times: int) -> None:
         login_guard.record_failure(request, username)
 
 
-def _blocked(request, username: str) -> bool:
+def _wait(request, username: str) -> float | None:
+    """The ``Throttled.wait`` of a blocked login, None when it may try."""
     try:
         login_guard.refuse_when_blocked(request, username)
     except Throttled as exc:
-        assert exc.wait == 60
-        return True
-    return False
+        return exc.wait
+    return None
+
+
+def _blocked(request, username: str) -> bool:
+    wait = _wait(request, username)
+    assert wait in (None, 60)
+    return wait is not None
+
+
+def _spread(at, username: str, addresses: int) -> None:
+    """One failure of ``username`` from each of ``addresses`` distinct addresses."""
+    for i in range(addresses):
+        _fail(at(f"198.51.100.{i + 1}"), username, 1)
 
 
 def test_failures_block_the_user_on_that_address_only(at):
@@ -65,9 +79,30 @@ def test_clear_resets_the_user_address_counter_only(at):
     assert _blocked(at(), "staffer")
 
 
+def test_failures_spread_over_addresses_block_the_username_everywhere(at):
+    _spread(at, "staffer", 49)
+    assert _wait(at(OTHER_ADDRESS), "staffer") is None
+    _spread(at, "staffer", 1)
+    assert _wait(at(OTHER_ADDRESS), "staffer") == 3600
+    assert _wait(at(OTHER_ADDRESS), "someone") is None
+
+
+def test_the_longest_window_answers_when_several_counters_block(at):
+    _spread(at, "staffer", 47)
+    _fail(at(), "staffer", 3)
+    assert _wait(at(), "staffer") == 3600
+
+
+def test_a_success_clears_the_user_address_counter_not_the_per_login_one(at):
+    _spread(at, "staffer", 50)
+    login_guard.clear(at("198.51.100.1"), "staffer")
+    assert _wait(at("198.51.100.1"), "staffer") == 3600
+
+
 def test_keys_are_hashes_without_username_or_address(at):
     keys = login_guard.failure_keys(at(), "staffer")
     assert keys[0].startswith("auth:fail:ui:") and keys[1].startswith("auth:fail:ip:")
+    assert keys[2].startswith("auth:fail:u:") and keys[2] == login_guard.failure_keys(at(OTHER_ADDRESS), "staffer")[2]
     assert not any("staffer" in key or ADDRESS in key for key in keys)
     assert keys != login_guard.failure_keys(at(OTHER_ADDRESS), "staffer")
 
