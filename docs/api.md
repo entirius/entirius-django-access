@@ -38,6 +38,7 @@ A superuser gets every area at its top level. A non-staff user gets `permissions
 | POST | `admin/grants/` | `role` and exactly one of `user_id` (active staff) / `group_id` | 201 |
 | DELETE | `admin/grants/<id>/` | — | 204 |
 | GET | `admin/staff/` | `search`, paging | 200 active staff with their roles (`via_group`) |
+| POST | `admin/staff/` | `username`, `email`, `role` (role key), optional `password`; nothing else (`is_superuser` → 400) | 201 the staff detail + `password`: the generated one (no `password` sent) in this response only, `Cache-Control: no-store`; null when one was given |
 | GET | `admin/staff/<user_id>/` | — | 200 + `groups`, `grants`; anything but an active staff user → 404 |
 | GET | `admin/groups/` | paging | 200 `{id, name, member_count, grants}` |
 | GET | `admin/audit/` | `action`, `actor`, `from`, `to`, paging (newest first) | 200 `{id, created_at, actor_id, actor_label, action, target_type, target_id, target_label, detail, ip}` |
@@ -46,6 +47,13 @@ Role errors: a built-in role changed or deleted → 409; any `access.manage:*` k
 an unknown key → 400. A change that leaves no access manager → 409 and nothing changes. A grant of an unknown role,
 to an unknown group or to anyone but an active staff user → 400 (the message never says which); a duplicate
 grant → 409.
+
+Staff create (`access_staff_create`): an active staff account, never a superuser, with the role granted (`staff.create`
+and `grant.create` audit rows, no password value in either). A username or e-mail taken by any user (any case) → 409;
+an unknown role, an invalid username or e-mail (the user model's validators) or a password Django's
+`AUTH_PASSWORD_VALIDATORS` refuse → 400 on that field. The `staff_user_created(sender=<user model>, user, actor)`
+signal is sent inside the transaction: a receiver that raises rolls the account back (accounts adds the `Customer`
+row the CMS login on `customer/tokens/` needs; without accounts the account signs in on `api/token/`).
 
 ## Applications and tokens
 
@@ -92,6 +100,9 @@ Key modules call `django_access.services.tokens.verify_api_key(request, scope, c
 authentication class or decorator:
 
 - reads `X-API-KEY`, else `X-API-ADMIN-KEY`; values over 256 characters → `None` without a query;
+- one query by hash: the row pinned to `channel_idx`, else the unpinned row — the first of them that holds `scope`
+  (one legacy secret may have a pinned row per channel and one unpinned row); `channel_idx=None` looks at the unpinned
+  row only;
 - returns the token and sets `request.access_token`, or `None` for every failure — answer it with the module's
   existing 401/400, never a different status per reason;
 - throttle per `request.access_token.pk`, never by the header value.

@@ -58,8 +58,10 @@ fails on any admin route without an area and on any rule matching another module
 |---|---|---|
 | `ACCESS_GATE_MODE` | `"enforce"` | `enforce` refuses; `observe` logs refusals (`django_access.gate`) and lets through; `off` decides nothing. Any other value is enforced + `E010`; a non-`enforce` mode with `DEBUG=False` warns `W010` |
 | `ACCESS_TOKEN_ROTATION_DAYS` | `365` | an active token this many days old is `rotation_due` (API, CLI, legacy report, catalogue `token_rotation_days`); a recommendation, nothing is refused; `0` turns it off |
-| `AUTH_TOKEN_FAILURE_WINDOW_S` | `900` | window of the failed-login counters (`services.login_guard`); a blocked login answers 429 for this long |
+| `AUTH_TOKEN_FAILURE_WINDOW_S` | `900` | window of the per username + address and per address failed-login counters (`services.login_guard`); a login they block answers 429 for this long |
 | `AUTH_TOKEN_MAX_FAILURES_PER_USER_IP` / `AUTH_TOKEN_MAX_FAILURES_PER_IP` | `10` / `100` | failed logins per username + address / per address before 429 |
+| `AUTH_TOKEN_MAX_FAILURES_PER_USER` | `50` | failed logins per username from any address before 429 — slows guesses spread over many addresses; the price: anyone who knows a username can hold it at 429 for up to `AUTH_TOKEN_USER_FAILURE_WINDOW_S` |
+| `AUTH_TOKEN_USER_FAILURE_WINDOW_S` | `3600` | window of the per-username counter, from the first failure; a success does not clear it |
 | `ACCESS_TOKEN_LAST_USED_INTERVAL_S` | `300` | `last_used_at` is written at most once per token per interval |
 | `AGREEMENTS_API_KEY` | `""` | read by the legacy import only (agreements' own setting) |
 

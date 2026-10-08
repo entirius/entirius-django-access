@@ -27,12 +27,13 @@ names and key fields — the real modules are not installed here. The `legacy_ro
 | `test_permissions.py` / `test_access_service.py` / `test_migration_0002.py` | effective permissions and cache versions (every user flag, membership, cascaded grants), every mutation with its audit row, service field whitelists, lockout guard, reserved `access.manage`, grant targets, 0002 → Manager and its 0001 round trip |
 | `test_gate.py` | the gate decision table, modes, bypass audit |
 | `test_product_delete.py` | `pim.product_delete`: built-in roles, both PIM roots, the RealProduct merge, media/file/link deletes, `me`, the audit report |
-| `test_tokens.py` / `test_access_token_command.py` | issue, rotate, revoke, verify, expiry rules, the CLI |
-| `test_login_guard.py` | failed-login counter: per username + address, per address, clear, hashed keys |
+| `test_tokens.py` / `test_access_token_command.py` | issue, rotate, revoke, verify (the row of the channel for a shared hash), one token per hash and channel (PostgreSQL only), expiry rules, the CLI |
+| `test_login_guard.py` | failed-login counter: per username + address, per address, per username (any address, its own window), clear, hashed keys |
 | `test_token_rotation.py` | `age_days` / `rotation_due` (D31) in the service, API, CLI and legacy report; `token_rotation_days` in the catalogue |
 | `test_admin_api.py` / `test_me_api.py` / `test_token_api.py` | every endpoint: auth matrix, bodies, conflicts, whitelists |
+| `test_staff_create.py` | `POST admin/staff/`: account shape, role and audit, the generated password once, refusals, the signal rollback, no password in audit or logs |
 | `test_openapi.py` | `spectacular --validate --fail-on-warn`, the `ApiKeyAuth` hook |
-| `test_legacy.py` | every legacy source without expiry, idempotency, shared secrets, null-channel skip, the agreements setting, a failing source, dry run, the `post_migrate` receiver, the command |
+| `test_legacy.py` | every legacy source without expiry, idempotency, shared secrets (one pinned token per channel, an older unpinned token `stale`, purge per channel), null-channel skip, the agreements setting, a failing source, dry run, the `post_migrate` receiver, the command |
 
 Shared helpers (`bearer`, `bypass_rows`, the token API endpoints, the measured query count) live in
 `tests/helpers.py` — test modules never import from a conftest or from each other.

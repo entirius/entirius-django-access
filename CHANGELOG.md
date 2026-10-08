@@ -97,7 +97,7 @@
   vault `APIKey`) and `AGREEMENTS_API_KEY` as tokens with the same secret — one `Legacy keys: <app_label>`
   application per module, `legacy=True`, `legacy_source` `<app>.<Model>#<pk>`, no expiry (D28: legacy keys never
   expire by themselves; the setting `ACCESS_LEGACY_KEY_TTL_DAYS` of earlier 0.1.0 builds is gone — 0.1.0 is
-  unreleased). Idempotent by `key_hash`: an existing token is never changed (no revival). A secret on several channels → one unpinned token; a row added later that the existing token does not serve →
+  unreleased). Idempotent by `key_hash`: an existing token is never changed (no revival). A secret on several channels → one pinned token per channel; a row added later that the existing token does not serve →
   `stale`; a secret in a publishable and a secret
   source → not imported (`mixed`); a secret under 32 characters → `prefix "legacy"`, empty `last_four`; a row
   without a channel → skipped. Runs on `post_migrate` (errors logged by class, `migrate` never fails); one
@@ -150,6 +150,16 @@
   100).
 - `verify_api_key` is fail-closed on pins: a pinned token is refused where the caller passes `channel_idx=None`.
 - OpenAPI tags in Title Case (`Access Grants`, …); `GET me` has a description.
+- `POST api/access/v2/admin/staff/` (`access_staff_create`, `access.manage:write`): an active staff account (never a
+  superuser) with one role through `access_service.create_staff_user` — `staff.create` audit row, the generated
+  password returned once (`no-store`), a given one never echoed; signal `staff_user_created` inside the transaction.
+- Legacy import: one secret on several channels → one pinned token per channel, its channel-less rows one unpinned
+  token with their scopes; report `unpinned` renamed `per_channel`; an unpinned token of an older import serving
+  channel rows → `stale`, nothing created. Purge judges each row by its own channel's token.
+- `ApiToken.key_hash` no longer unique alone: `UniqueConstraint(key_hash, channel_idx, nulls_distinct=False)`
+  (migration `0005`, PostgreSQL 15+); `verify_api_key` takes the row of the route's channel, else the unpinned one.
+- `login_guard`: a per-username counter from any address, `AUTH_TOKEN_MAX_FAILURES_PER_USER` (50) per
+  `AUTH_TOKEN_USER_FAILURE_WINDOW_S` (3600); `Throttled.wait` is the longest window that blocks.
 
 ## 0.1.0 (unreleased)
 

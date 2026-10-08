@@ -84,7 +84,9 @@ counts on a JWT-only view, and API-key headers never open an admin route.
 ## Application tokens
 
 A machine client is an **Application**; it holds **tokens**. The raw value is `ent_api_` + 43 URL-safe characters,
-shown once. The database keeps its SHA-256 (`key_hash`, unique), `prefix` (12 characters) and `last_four`.
+shown once. The database keeps its SHA-256 (`key_hash`), `prefix` (12 characters) and `last_four`. At most one token
+per hash and channel, one unpinned (`UniqueConstraint(key_hash, channel_idx, nulls_distinct=False)`): issued tokens
+have random values, only the legacy import puts one secret on several pinned rows.
 
 - **Scopes** (9): `checkout.storefront`, `contact_forms.submit`, `contact_forms.booking`, `agreements.subscribe`
   (publishable — they ship to browsers) and `checkout.erase`, `accounts.erase`, `returns.api`, `reviews.moderate`,
@@ -96,7 +98,8 @@ shown once. The database keeps its SHA-256 (`key_hash`, unique), `prefix` (12 ch
   channel (`channel_idx=None`) cannot check it, so a pinned token is refused there. A pin on an erase token
   limits the URL channel, not the erase's reach — accounts and checkout erase by e-mail across channels.
 - `verify_api_key(request, scope, channel_idx=None)` reads `X-API-KEY` (alias `X-API-ADMIN-KEY`), runs one uncached
-  query by hash and returns the token or `None` — one answer for unknown, expired, revoked, inactive application,
+  query by hash — of the row pinned to the route's channel and the unpinned row, the first (pinned first) that holds
+  the scope — and returns the token or `None` — one answer for unknown, expired, revoked, inactive application,
   wrong scope and channel mismatch. Revocation applies on the next request.
 - Rotation issues a successor (no expiry unless one is given) and keeps the old token valid for an overlap
   (default 24 h).
@@ -121,8 +124,10 @@ Rules: one application per module (`Legacy keys: <app_label>`); `legacy=True`, `
 `<app>.<Model>#<pk>` (comma-separated for a shared secret; past 255 characters the leading whole ids and `+N more`);
 a secret shared by two modules is one token under the first module's application (`operations.md`); no expiry — a
 legacy key never expires by itself, and a re-run never changes an existing token. A row
-without a channel authenticates nothing today, so it is skipped. A secret on several channels (or in a channel source
-and a channel-less one) becomes one unpinned token, valid on every channel — reported `unpinned`. A secret found in a publishable and a secret source is **not imported** (`mixed`) — a key that ships to
+without a channel authenticates nothing today, so it is skipped. A secret on several channels becomes one token per
+channel, each pinned to its channel with that channel's scopes; its channel-less rows (`AGREEMENTS_API_KEY`, the
+channel-less sources) get an unpinned token with only their scopes — reported `per_channel`, and no token is wider
+than the key it replaces. A secret found in a publishable and a secret source is **not imported** (`mixed`) — a key that ships to
 browsers never gets erase, returns, reviews or vault power. A secret under 32 characters shows no character
 (`prefix "legacy"`, empty `last_four`).
 
@@ -133,5 +138,5 @@ shows who still uses which key and which is `rotation due` (legacy tokens count 
 ## Audit
 
 Every access change writes one `AuditEntry` in the same transaction: `role.*`, `grant.*`, `grant.migrate`,
-`application.*`, `token.*`, `legacy.import`, `legacy.purge`, `gate.bypass`. Labels are copied, so a row survives its
+`staff.create`, `application.*`, `token.*`, `legacy.import`, `legacy.purge`, `gate.bypass`. Labels are copied, so a row survives its
 actor and target. No row ever holds a raw token or `key_hash`.

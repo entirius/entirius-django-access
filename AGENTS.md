@@ -39,11 +39,12 @@ Read first: `docs/install.md` (host) · `docs/upgrade.md` (before the first depl
 ```
 src/django_access/
 ├── apps.py (checks, cache signals, post_migrate legacy import)  middleware.py (AccessGateMiddleware)
-│   openapi.py (ApiKeyAuth hook)  checks.py (E001–E008, E010, E011, W002, W003, W010, I001)  signals.py  exceptions.py  urls.py
+│   openapi.py (ApiKeyAuth hook)  checks.py (E001–E008, E010, E011, W002, W003, W010, I001)  exceptions.py  urls.py
+│   signals.py (cache invalidation, staff_user_created)
 │   testing.py (assert_routes_covered, for module test suites)
 ├── catalogue/    areas (49)  scopes (9 token scopes)  defaults (route rules, method and area overrides)  registry
 ├── models/       role (Role, RolePermission)  grant  audit (AuditEntry, AuditAction)  application  token (ApiToken)
-├── services/     access_service (every role/grant mutation + audit + lockout guard)  permissions (cached)
+├── services/     access_service (every role/grant mutation, staff create + audit + lockout guard)  permissions (cached)
 │                 route_map (classify, audit_routes)  gate (decide)  tokens (issue, rotate, revoke, verify_api_key)
 │                 legacy (import, legacy_report, purge_legacy_sources)  directory (read queries of the API)
 │                 login_guard (failed-login counter of the service's password logins)
@@ -54,7 +55,8 @@ src/django_access/
 ```
 
 Flow: request → resolve → gate (admin set only: principal → role permissions → allow / 401 / 403) → view. Key routes:
-the module's own auth → `verify_api_key(request, scope, channel_idx)` → one lookup by hash. `migrate` →
+the module's own auth → `verify_api_key(request, scope, channel_idx)` → one lookup by hash (the row of the channel,
+else the unpinned one). `migrate` →
 `post_migrate` → legacy import (no expiry; teams set one per token) → `access_import_legacy_keys --check` in the deploy
 → `access_legacy_report` shows who still uses them → `access_purge_legacy_keys --yes` on demand. Route areas: the
 view's `access_area` → the module's `AppConfig` rules → the access defaults.
@@ -76,5 +78,7 @@ view's `access_area` → the module's `AppConfig` rules → the access defaults.
   race runs wherever `DATABASE_URL` is set and fails off Postgres; sqlite skips it).
 - `tests/legacy_apps/` installs fake key modules under the real app labels; `tests/security/` is the security
   suite.
+- The one-token-per-hash-and-channel constraint (`nulls_distinct=False`) exists on PostgreSQL 15+ only: its tests
+  skip on sqlite (`models.W047`, silenced in `tests/settings.py`).
 - `docs/openapi.yaml` is generated from `django_access.urls` (`docs/testing.md`) — regenerate it with the API.
 - Never put a real or shared key in a test: generate secrets in the test.

@@ -660,6 +660,46 @@ paths:
           description: No response body
         '404':
           description: No response body
+    post:
+      operationId: access_staff_create
+      description: 'Never a superuser. No `password` → one is generated and returned
+        in this response only (`Cache-Control: no-store`); a given password is never
+        echoed. Taken username or e-mail (any case) → 409; unknown role, invalid field
+        or a password the validators refuse → 400 on that field.'
+      summary: Create an active staff account with one role
+      tags:
+      - Access Staff
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/StaffCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/StaffCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StaffCreateResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+        '409':
+          description: No response body
   /api/access/v2/admin/staff/{user_id}/:
     get:
       operationId: admin_staff_retrieve
@@ -1630,6 +1670,106 @@ components:
       - publishable
       - routes
       title: ScopeResponse
+      type: object
+    StaffCreateRequest:
+      additionalProperties: false
+      description: |-
+        Shape only: the user model's own rules (username validator and length, e-mail format, uniqueness) and the password
+        validators are the service's call.
+      properties:
+        username:
+          description: Unique, case-insensitively.
+          examples:
+          - jdoe
+          maxLength: 254
+          minLength: 1
+          title: Username
+          type: string
+        email:
+          description: Unique, case-insensitively.
+          examples:
+          - jdoe@x.io
+          maxLength: 254
+          minLength: 3
+          title: Email
+          type: string
+        role:
+          description: Key of an existing role.
+          examples:
+          - editor
+          pattern: ^[a-z][a-z0-9_-]{1,49}$
+          title: Role
+          type: string
+        password:
+          anyOf:
+          - maxLength: 1024
+            minLength: 1
+            type: string
+          - type: 'null'
+          default: null
+          description: Omit to have one generated and returned once; a given password
+            is never echoed.
+          title: Password
+      required:
+      - username
+      - email
+      - role
+      title: StaffCreateRequest
+      type: object
+    StaffCreateResponse:
+      properties:
+        id:
+          title: Id
+          type: integer
+        username:
+          title: Username
+          type: string
+        email:
+          title: Email
+          type: string
+        name:
+          description: First and last name.
+          title: Name
+          type: string
+        is_superuser:
+          title: Is Superuser
+          type: boolean
+        roles:
+          items:
+            $ref: '#/components/schemas/StaffRoleResponse'
+          title: Roles
+          type: array
+        groups:
+          items:
+            $ref: '#/components/schemas/GroupRef'
+          title: Groups
+          type: array
+        grants:
+          description: Grants to the user and to their groups.
+          items:
+            $ref: '#/components/schemas/GrantResponse'
+          title: Grants
+          type: array
+        password:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: The generated password — in this response only; null when the
+            request gave one.
+          examples:
+          - <shown once>
+          title: Password
+      required:
+      - id
+      - username
+      - email
+      - name
+      - is_superuser
+      - roles
+      - groups
+      - grants
+      - password
+      title: StaffCreateResponse
       type: object
     StaffDetailResponse:
       properties:

@@ -50,10 +50,15 @@ where it is enforced.
 
 - **Values are secrets; the report holds ids.** Never log, print or audit a legacy value or its hash. Exceptions
   are logged by class: an `IntegrityError` message carries the `key_hash`.
-- **Idempotent by `key_hash`.** An existing token is never changed — no expiry extension, no added scope, no
-  revival. A row that later reuses an imported secret on another scope or channel is `stale` and fails `--check`.
-- **Shared secrets widen.** One secret on several channels becomes one unpinned token (plan decision): review the
-  `unpinned` lines of the first import, above all for erase keys.
+- **Idempotent by (`key_hash`, `channel_idx`).** An existing token is never changed — no expiry extension, no added
+  scope, no revival. A row that later reuses an imported secret on another scope of the same channel is `stale` and
+  fails `--check`; on a new channel it gets a pinned token of its own.
+- **Shared secrets split, never widen.** One secret on several channels → one pinned token per channel (`per_channel`),
+  its channel-less rows an unpinned token with their scopes only. An unpinned token from an import before the split
+  that serves channel rows reports the whole secret `stale` and nothing is created — revoke it (or seed afresh) and
+  import again.
+- **`nulls_distinct=False` needs PostgreSQL 15+.** On an older server or sqlite Django creates no constraint at all
+  (`models.W047`): nothing stops a second token for one hash and channel there.
 - **A secret shared across modules lands in one application** — the first source's module (`Legacy keys: <label>`)
   — with the union of the scopes.
 - **Sources are looked up by app label** (`apps.get_model`), so the fake modules in `tests/legacy_apps/` stand in

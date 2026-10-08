@@ -30,8 +30,8 @@ Report outcomes per source:
 | `imported` | a token was created (under `--check`: `missing`, not imported yet) |
 | `present` | a token with that hash exists — left as it is, its expiry untouched |
 | `skipped` | the row authenticates nothing today (no channel, empty value, unknown scope) |
-| `unpinned` | the secret was found on several channels, or in a channel source and a channel-less one; one unpinned token holds it and works on **every** channel |
-| `stale` | a token with that hash exists but does not serve the row (another scope or channel added later); the token is never widened — `--check` fails |
+| `per_channel` | one secret on several channels (or in a channel source and a channel-less one) → one pinned token per channel with that channel's scopes, the channel-less rows an unpinned token with theirs |
+| `stale` | the token of that hash and channel exists but does not serve the row (another scope added later), or an unpinned token of an older import serves the secret's channel rows (nothing is created); the token is never widened — `--check` fails |
 | `short` | under 32 characters; the token shows `legacy…` |
 | `mixed` | found in a publishable and a secret source; **no token** |
 
