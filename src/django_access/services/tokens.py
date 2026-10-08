@@ -16,7 +16,7 @@ from typing import Any
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 
 from django_access.catalogue import registry
@@ -257,6 +257,18 @@ def _touch(token: ApiToken, now: datetime) -> None:
         token.last_used_at = now
 
 
+def _candidate(presented: str, scope: str, channel_idx: str | None) -> ApiToken | None:
+    """One query over the rows of the hash (several only for a legacy secret split per channel): the row pinned to the
+    route's channel, else the unpinned one — the first of them that holds ``scope``."""
+    rows = ApiToken.objects.select_related("application").filter(key_hash=hash_key(presented))
+    if channel_idx is None:
+        rows = rows.filter(channel_idx__isnull=True)
+    else:
+        rows = rows.filter(Q(channel_idx=str(channel_idx)) | Q(channel_idx__isnull=True))
+    ordered = rows.order_by(F("channel_idx").asc(nulls_last=True))
+    return next((token for token in ordered if scope in token.scopes), None)
+
+
 def verify_api_key(request, scope: str, channel_idx: str | None = None) -> ApiToken | None:
     """The token presented by ``request`` when it may use ``scope`` on ``channel_idx``, else ``None`` (any reason).
 
@@ -264,7 +276,7 @@ def verify_api_key(request, scope: str, channel_idx: str | None = None) -> ApiTo
     presented = _presented(request)
     if presented is None:
         return None
-    token = ApiToken.objects.select_related("application").filter(key_hash=hash_key(presented)).first()
+    token = _candidate(presented, scope, channel_idx)
     now = timezone.now()
     if token is None or token_state(token, now) != ACTIVE or not _allows(token, scope, channel_idx):
         return None

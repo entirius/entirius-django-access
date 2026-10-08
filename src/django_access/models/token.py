@@ -6,13 +6,17 @@ from django.db import models
 
 
 class ApiToken(models.Model):
-    """A hashed application token: only the SHA-256 of the raw value is stored, `prefix` and `last_four` identify it."""
+    """A hashed application token: only the SHA-256 of the raw value is stored, `prefix` and `last_four` identify it.
+
+    At most one token per hash and channel, one unpinned (``nulls_distinct=False``, PostgreSQL 15+): issued tokens have
+    random values, only the legacy import shares a hash — one secret on several channels, one pinned token each.
+    """
 
     application = models.ForeignKey("django_access.Application", on_delete=models.CASCADE, related_name="tokens")
     name = models.CharField(max_length=128, blank=True, default="")
     prefix = models.CharField(max_length=12)
     last_four = models.CharField(max_length=4, blank=True, default="")
-    key_hash = models.CharField(max_length=64, unique=True)
+    key_hash = models.CharField(max_length=64, db_index=True)
     scopes = models.JSONField(default=list)
     channel_idx = models.CharField(max_length=64, null=True, blank=True)  # noqa: DJ001 — null = unpinned (contract)
     expires_at = models.DateTimeField(null=True, blank=True)
@@ -30,6 +34,11 @@ class ApiToken(models.Model):
 
     class Meta:
         ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["key_hash", "channel_idx"], nulls_distinct=False, name="django_access_token_hash_channel"
+            )
+        ]
 
     def __str__(self) -> str:
         return f"{self.name or 'token'} ({self.display})"

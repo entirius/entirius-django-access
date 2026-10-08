@@ -102,20 +102,28 @@ def test_check_fails_on_one_unimported_row_and_writes_nothing(legacy_row):
     assert ApiToken.objects.count() == 1
 
 
-@pytest.mark.parametrize(
-    ("model", "fields"),
-    [(STOREFRONT, {"channel": "outlet"}), ("django_contact_forms.APIKey", {"channel": "emporium"})],
-)
-def test_a_row_the_existing_token_does_not_serve_is_stale_and_fails_check(legacy_row, model, fields):
-    """The secret is copied to another channel or another source after the import: the token is never widened."""
+def test_a_row_the_existing_token_does_not_serve_is_stale_and_fails_check(legacy_row):
+    """The secret is copied to another source on the same channel after the import: the token is never widened."""
+    model = "django_contact_forms.APIKey"
     first = legacy_row(STOREFRONT, channel="emporium")
     legacy.import_legacy_keys()
-    late = legacy_row(model, key=first.key, **fields)
+    late = legacy_row(model, key=first.key, channel="emporium")
     report = legacy.import_legacy_keys()
     assert f"{model}#{late.pk}" in report.sources[model].stale
     assert token_of(first.key).scopes == ["checkout.storefront"] and token_of(first.key).channel_idx == "emporium"
     _, error = run("access_import_legacy_keys", "--check")
     assert error is not None and "stale" in str(error)
+
+
+def test_a_copy_on_another_channel_gets_its_own_pinned_token(legacy_row):
+    """The secret is copied to another channel after the import: a second pinned token, the first one untouched."""
+    first = legacy_row(STOREFRONT, channel="emporium")
+    legacy.import_legacy_keys()
+    late = legacy_row(STOREFRONT, key=first.key, channel="outlet")
+    report = legacy.import_legacy_keys()
+    assert report.sources[STOREFRONT].imported == [f"{STOREFRONT}#{late.pk}"]
+    pins = dict(ApiToken.objects.filter(key_hash=hash_key(first.key)).values_list("channel_idx", "legacy_source"))
+    assert pins == {"emporium": f"{STOREFRONT}#{first.pk}", "outlet": f"{STOREFRONT}#{late.pk}"}
 
 
 def test_check_fails_on_a_failing_source(legacy_row, monkeypatch):

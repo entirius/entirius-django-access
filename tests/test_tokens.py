@@ -39,10 +39,50 @@ def test_only_the_hash_is_stored(issue):
     assert row["key_hash"] == tokens.hash_key(raw)
 
 
-def test_hash_is_unique(issue, application):
-    token, _ = issue()
+@pytest.fixture
+def nulls_not_distinct():
+    """Asked at run time: the backend may read the server version from the database."""
+    if not connection.features.supports_nulls_distinct_unique_constraints:
+        pytest.skip("NULLS NOT DISTINCT needs PostgreSQL 15+; sqlite creates no constraint (models.W047)")
+
+
+def same_hash(token: ApiToken, channel_idx: str | None, scopes=(STOREFRONT,)) -> ApiToken:
+    """A second row of ``token``'s hash — what the legacy import makes of one secret on several channels."""
+    fields = {"prefix": "x", "key_hash": token.key_hash, "scopes": list(scopes), "channel_idx": channel_idx}
+    return ApiToken.objects.create(application=token.application, **fields)
+
+
+@pytest.mark.parametrize("channel_idx", ["emporium", None])
+def test_one_token_per_hash_and_channel_one_unpinned(issue, channel_idx, nulls_not_distinct):
+    token, _ = issue(channel_idx=channel_idx)
     with pytest.raises(IntegrityError):
-        ApiToken.objects.create(application=application, prefix="x", key_hash=token.key_hash, scopes=[STOREFRONT])
+        same_hash(token, channel_idx)
+
+
+def test_one_hash_on_two_channels_picks_the_row_of_the_channel(issue, key_request):
+    pinned, raw = issue(channel_idx="emporium")
+    unpinned = same_hash(pinned, None)
+    outlet = same_hash(pinned, "outlet")
+    request = key_request(HTTP_X_API_KEY=raw)
+    assert tokens.verify_api_key(request, STOREFRONT, "emporium") == pinned
+    assert tokens.verify_api_key(request, STOREFRONT, "outlet") == outlet
+    assert tokens.verify_api_key(request, STOREFRONT, "other") == unpinned
+    assert tokens.verify_api_key(request, STOREFRONT) == unpinned
+
+
+def test_the_unpinned_row_serves_a_scope_the_pinned_row_lacks(issue, key_request):
+    pinned, raw = issue(channel_idx="emporium")
+    unpinned = same_hash(pinned, None, scopes=["agreements.subscribe"])
+    request = key_request(HTTP_X_API_KEY=raw)
+    assert tokens.verify_api_key(request, "agreements.subscribe", "emporium") == unpinned
+    assert tokens.verify_api_key(request, STOREFRONT, "outlet") is None
+
+
+def test_a_revoked_pinned_row_is_not_replaced_by_the_unpinned_one(issue, key_request, system):
+    pinned, raw = issue(channel_idx="emporium")
+    same_hash(pinned, None)
+    tokens.revoke_token(pinned, actor=system)
+    assert tokens.verify_api_key(key_request(HTTP_X_API_KEY=raw), STOREFRONT, "emporium") is None
 
 
 def test_two_issues_never_share_a_value(issue):

@@ -13,7 +13,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from django_access.services import legacy
 
-KINDS = ("imported", "present", "skipped", "unpinned", "short", "mixed", "stale")
+KINDS = ("imported", "present", "skipped", "per_channel", "short", "mixed", "stale")
 
 
 def _labels(check: bool) -> dict[str, str]:

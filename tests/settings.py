@@ -61,3 +61,5 @@ DATABASES = {"default": dj_database_url.config(default="sqlite://:memory:")}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 USE_TZ = True
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+# sqlite cannot hold the token's NULLS NOT DISTINCT constraint; its tests skip there and run on PostgreSQL.
+SILENCED_SYSTEM_CHECKS = ["models.W047"]

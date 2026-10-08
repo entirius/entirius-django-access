@@ -6,9 +6,12 @@ plaintext rows on demand.
 
 Import keeps each secret: the token's ``key_hash`` is the SHA-256 of the legacy value, so every caller keeps working.
 A legacy token never expires by itself (D28) — a team sets or clears an expiry per token (``tokens.set_token_expiry``),
-revokes or rotates it. Idempotent by ``key_hash`` — an existing token is never changed, so a re-run never revives an
-expired or revoked token. A secret found in a publishable and a secret source is not imported (``mixed``); a secret
-shorter than 32 characters shows no character (``short``).
+revokes or rotates it. One secret becomes one token per channel, pinned to it, with that channel's scopes; its
+channel-less rows one unpinned token with theirs (``per_channel`` when it splits) — no token is wider than the key it
+replaces. Idempotent by (``key_hash``, ``channel_idx``) — an existing token is never changed, so a re-run never revives
+an expired or revoked token. An unpinned token of an older import that serves channel rows is ``stale`` and blocks the
+secret's import. A secret found in a publishable and a secret source is not imported (``mixed``); a secret shorter than
+32 characters shows no character (``short``).
 
 Purge deletes the module rows of imported keys, no time gate; a row whose token was used within ``recent_days`` is
 refused unless ``force`` (that row is the only way back if access is ever removed). One ``legacy.purge`` audit row per
@@ -83,7 +86,7 @@ class SourceReport:
     imported: list[str] = field(default_factory=list)
     present: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
-    unpinned: list[str] = field(default_factory=list)
+    per_channel: list[str] = field(default_factory=list)
     short: list[str] = field(default_factory=list)
     mixed: list[str] = field(default_factory=list)
     stale: list[str] = field(default_factory=list)
@@ -239,7 +242,8 @@ def _legacy_source(refs: list[str]) -> str:
 
 
 def _create_token(group: list[LegacyKey], scopes: list[str]) -> None:
-    value, channels = group[0].value, {key.channel_idx for key in group}
+    """One part of a secret: its rows share the channel (or have none)."""
+    value = group[0].value
     short = len(value) < SHORT_SECRET_LENGTH
     application, _ = Application.objects.get_or_create(name=f"Legacy keys: {group[0].module}")
     ApiToken.objects.create(
@@ -249,25 +253,25 @@ def _create_token(group: list[LegacyKey], scopes: list[str]) -> None:
         prefix=SHORT_PREFIX if short else value[:LEGACY_PREFIX_LENGTH],
         last_four="" if short else value[-4:],
         scopes=scopes,
-        channel_idx=next(iter(channels)) if len(channels) == 1 else None,
+        channel_idx=group[0].channel_idx,
         expires_at=None,
         legacy=True,
         legacy_source=_legacy_source(_refs(group)),
     )
 
 
-def _covers(token: ApiToken, group: list[LegacyKey]) -> bool:
-    """The existing token serves every row: all their scopes, and unpinned or pinned to their one channel."""
-    channels = {key.channel_idx for key in group}
-    pinned_right = token.channel_idx is None or channels == {token.channel_idx}
-    return {key.scope for key in group} <= set(token.scopes) and pinned_right
+def _scopes(group: list[LegacyKey]) -> list[str]:
+    return sorted({key.scope for key in group})
 
 
-def _store(group: list[LegacyKey], scopes: list[str], run: _Run) -> None:
-    """``present`` leaves the token as it is; ``stale`` = a row added later that the token does not serve."""
-    if token := ApiToken.objects.filter(key_hash=hash_key(group[0].value)).first():
-        run.report.add("present" if _covers(token, group) else "stale", group)
+def _store(group: list[LegacyKey], run: _Run) -> None:
+    """One part, looked up by (hash, channel): ``present`` leaves the token as it is; ``stale`` = a row added later that
+    the token does not serve."""
+    lookup = {"key_hash": hash_key(group[0].value), "channel_idx": group[0].channel_idx}
+    if token := ApiToken.objects.filter(**lookup).first():
+        run.report.add("present" if set(_scopes(group)) <= set(token.scopes) else "stale", group)
         return
+    scopes = _scopes(group)
     if not run.dry_run:
         try:
             with transaction.atomic():
@@ -278,18 +282,37 @@ def _store(group: list[LegacyKey], scopes: list[str], run: _Run) -> None:
     run.report.add("imported", group)
 
 
+def _by_channel(group: list[LegacyKey]) -> list[list[LegacyKey]]:
+    """The parts of one secret: its rows per channel, the channel-less rows one part; ordered by ``legacy_source`` id."""
+    parts = defaultdict(list)
+    for key in group:
+        parts[key.channel_idx].append(key)
+    return sorted(parts.values(), key=lambda part: part[0].ref)
+
+
+def _wider_unpinned(group: list[LegacyKey]) -> bool:
+    """An unpinned token of an older import (one token for every channel) that serves channel rows of this secret."""
+    channel_scopes = {key.scope for key in group if key.channel_idx is not None}
+    token = ApiToken.objects.filter(key_hash=hash_key(group[0].value), channel_idx__isnull=True).first()
+    return token is not None and bool(channel_scopes & set(token.scopes))
+
+
 def _import_group(group: list[LegacyKey], run: _Run) -> None:
-    """One secret: ``mixed`` (publishable + secret scopes) gets no token; several channels → one unpinned token."""
-    scopes = sorted({key.scope for key in group})
-    if len({is_secret([scope]) for scope in scopes}) > 1:
+    """One secret: ``mixed`` (publishable + secret scopes) gets no token, nor does one an older unpinned token serves on
+    its channels (``stale``); else one token per part."""
+    if len({is_secret([scope]) for scope in _scopes(group)}) > 1:
         run.report.add("mixed", group)
         run.report.mixed.append(_refs(group))
         return
-    if len({key.channel_idx for key in group}) > 1:
-        run.report.add("unpinned", group)
+    if _wider_unpinned(group):
+        run.report.add("stale", group)
+        return
+    if len(parts := _by_channel(group)) > 1:
+        run.report.add("per_channel", group)
     if len(group[0].value) < SHORT_SECRET_LENGTH:
         run.report.add("short", group)
-    _store(group, scopes, run)
+    for part in parts:
+        _store(part, run)
 
 
 def _record_run(action: str, actor: Actor, detail: dict) -> None:
@@ -347,9 +370,10 @@ def _verdict(token: ApiToken | None, purge: _Purge) -> str:
     return REFUSED if _in_use(token, purge) else DELETED
 
 
-def _tokens_by_hash(values: list[str]) -> dict[str, ApiToken]:
+def _tokens_by_key(values: list[str]) -> dict[tuple[str, str | None], ApiToken]:
+    """The tokens of these values by (``key_hash``, ``channel_idx``) — a row is judged by its own channel's token."""
     hashes = {hash_key(value) for value in values if value}
-    return {token.key_hash: token for token in ApiToken.objects.filter(key_hash__in=hashes)}
+    return {(token.key_hash, token.channel_idx): token for token in ApiToken.objects.filter(key_hash__in=hashes)}
 
 
 def _judge(token: ApiToken | None, ref: str, source: str, purge: _Purge) -> str:
@@ -361,13 +385,14 @@ def _judge(token: ApiToken | None, ref: str, source: str, purge: _Purge) -> str:
 
 
 def _purge_source(model: type[models.Model], source: Source, purge: _Purge) -> None:
-    rows = list(model._default_manager.order_by("pk").values_list("pk", "key"))
-    tokens = _tokens_by_hash([value for _, value in rows])
+    """Rows of a channel source by (hash, their channel), of a channel-less one by (hash, unpinned)."""
+    rows = _rows(model, source)
+    tokens = _tokens_by_key([row["key"] for row in rows])
     doomed = []
-    for pk, value in rows:
-        token = tokens.get(hash_key(value)) if value else None
-        if _judge(token, f"{source.model}#{pk}", source.model, purge) == DELETED:
-            doomed.append(pk)
+    for row in rows:
+        token = tokens.get((hash_key(row["key"]), row.get("channel__idx"))) if row["key"] else None
+        if _judge(token, f"{source.model}#{row['pk']}", source.model, purge) == DELETED:
+            doomed.append(row["pk"])
     if doomed and not purge.options.dry_run:
         model._default_manager.filter(pk__in=doomed).delete()
 
@@ -376,7 +401,7 @@ def _purge_agreements(purge: _Purge) -> None:
     """The setting cannot be deleted by code: name it once imported and not in use (or with ``force``)."""
     if not (value := getattr(settings, "AGREEMENTS_API_KEY", "")):
         return
-    token = _tokens_by_hash([value]).get(hash_key(value))
+    token = _tokens_by_key([value]).get((hash_key(value), None))
     if token is not None and _verdict(token, purge) == DELETED:
         purge.report.remove_settings.append("AGREEMENTS_API_KEY")
 

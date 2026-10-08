@@ -8,11 +8,12 @@ from io import StringIO
 import pytest
 from django.core.management import call_command
 from django.db import connection
+from django.test import RequestFactory
 from django.utils import timezone
 
 from django_access.models import ApiToken, AuditAction, AuditEntry
 from django_access.services import legacy
-from django_access.services.tokens import hash_key
+from django_access.services.tokens import hash_key, verify_api_key
 
 SOURCES = [
     ("django_accounts.APIAdminKey", {"channel": "emporium"}, "accounts.erase", "emporium"),
@@ -67,15 +68,72 @@ def test_rerun_is_idempotent_and_keeps_an_expiry_a_team_set(legacy_row):
     assert import_runs() == 1
 
 
-def test_a_secret_shared_by_two_channels_becomes_one_unpinned_token(legacy_row):
+def pinned_tokens(value: str) -> dict[str | None, ApiToken]:
+    return {token.channel_idx: token for token in ApiToken.objects.filter(key_hash=hash_key(value))}
+
+
+def verifies(value: str, scope: str, channel_idx: str | None) -> ApiToken | None:
+    return verify_api_key(RequestFactory().get("/", HTTP_X_API_KEY=value), scope, channel_idx)
+
+
+def test_a_secret_shared_by_two_channels_becomes_one_pinned_token_per_channel(legacy_row):
     one = legacy_row("django_checkout.APIKey", channel="emporium")
     two = legacy_row("django_checkout.APIKey", channel="outlet", key=one.key)
     report = legacy.import_legacy_keys()
-    token = token_of(one.key)
-    assert (ApiToken.objects.count(), token.channel_idx, token.scopes) == (1, None, ["checkout.storefront"])
+    tokens = pinned_tokens(one.key)
+    assert set(tokens) == {"emporium", "outlet"}
+    assert [tokens[channel].scopes for channel in ("emporium", "outlet")] == [["checkout.storefront"]] * 2
+    assert tokens["emporium"].legacy_source == f"django_checkout.APIKey#{one.pk}"
     refs = [f"django_checkout.APIKey#{one.pk}", f"django_checkout.APIKey#{two.pk}"]
-    assert report.sources["django_checkout.APIKey"].unpinned == refs
-    assert token.legacy_source == ",".join(refs)
+    assert report.sources["django_checkout.APIKey"].per_channel == refs
+    assert report.sources["django_checkout.APIKey"].imported == refs
+    for channel in ("emporium", "outlet"):
+        assert verifies(one.key, "checkout.storefront", channel) == tokens[channel]
+    assert verifies(one.key, "checkout.storefront", "other") is None
+    assert verifies(one.key, "checkout.storefront", None) is None
+
+
+def test_a_channel_secret_also_in_the_agreements_setting_gets_an_unpinned_token_of_its_own(legacy_row, settings):
+    row = legacy_row("django_checkout.APIKey", channel="emporium")
+    settings.AGREEMENTS_API_KEY = row.key
+    legacy.import_legacy_keys()
+    tokens = pinned_tokens(row.key)
+    assert (tokens["emporium"].scopes, tokens[None].scopes) == (["checkout.storefront"], ["agreements.subscribe"])
+    assert tokens[None].legacy_source == "settings.AGREEMENTS_API_KEY"
+    assert verifies(row.key, "checkout.storefront", "outlet") is None
+    assert verifies(row.key, "agreements.subscribe", "outlet") == tokens[None]
+
+
+def test_a_second_run_finds_every_part_present(legacy_row):
+    one = legacy_row("django_checkout.APIKey", channel="emporium")
+    legacy_row("django_checkout.APIKey", channel="outlet", key=one.key)
+    legacy.import_legacy_keys()
+    report = legacy.import_legacy_keys()
+    assert len(report.sources["django_checkout.APIKey"].present) == 2
+    assert ApiToken.objects.count() == 2 and import_runs() == 1
+    assert sorted(row["channel_idx"] for row in legacy.legacy_report()) == ["emporium", "outlet"]
+
+
+def test_an_older_unpinned_token_of_a_multi_channel_secret_is_stale_and_blocks_the_import(legacy_row, application):
+    """A database imported before the split holds one unpinned token for every channel: reported, nothing created."""
+    one = legacy_row("django_checkout.APIKey", channel="emporium")
+    two = legacy_row("django_checkout.APIKey", channel="outlet", key=one.key)
+    fields = {"key_hash": hash_key(one.key), "scopes": ["checkout.storefront"], "legacy": True}
+    ApiToken.objects.create(application=application, prefix="x", **fields)
+    report = legacy.import_legacy_keys()
+    refs = [f"django_checkout.APIKey#{one.pk}", f"django_checkout.APIKey#{two.pk}"]
+    assert report.sources["django_checkout.APIKey"].stale == refs
+    assert list(pinned_tokens(one.key)) == [None]
+
+
+def test_purge_judges_each_row_by_its_own_channels_token(legacy_row, system):
+    one = legacy_row("django_checkout.APIKey", channel="emporium")
+    two = legacy_row("django_checkout.APIKey", channel="outlet", key=one.key)
+    legacy.import_legacy_keys()
+    ApiToken.objects.filter(channel_idx="outlet").update(last_used_at=timezone.now())
+    report = legacy.purge_legacy_sources(actor=system)
+    assert report.ids(legacy.DELETED) == [f"django_checkout.APIKey#{one.pk}"]
+    assert report.ids(legacy.REFUSED) == [f"django_checkout.APIKey#{two.pk}"]
 
 
 def test_a_secret_in_two_secret_sources_holds_both_scopes(legacy_row):
@@ -195,8 +253,10 @@ def test_command_prints_counts_and_with_report_the_ids(legacy_row):
     out = StringIO()
     call_command("access_import_legacy_keys", "--report", stdout=out)
     lines = out.getvalue().splitlines()
-    assert "django_returns.APIKey: imported 0, present 0, skipped 0, unpinned 0, short 0, mixed 0, stale 0" in lines
-    vault = lines.index("django_vault.APIKey: imported 1, present 0, skipped 0, unpinned 0, short 0, mixed 0, stale 0")
+    assert "django_returns.APIKey: imported 0, present 0, skipped 0, per_channel 0, short 0, mixed 0, stale 0" in lines
+    vault = lines.index(
+        "django_vault.APIKey: imported 1, present 0, skipped 0, per_channel 0, short 0, mixed 0, stale 0"
+    )
     assert lines[vault + 1] == f"  imported: django_vault.APIKey#{row.pk}"
     assert row.key not in out.getvalue()
 
