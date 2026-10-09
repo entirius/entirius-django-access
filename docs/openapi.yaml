@@ -1,0 +1,2249 @@
+# Generated from the module urlconf (manage.py spectacular --urlconf django_access.urls, tests.settings) — regenerate with the API.
+openapi: 3.1.0
+info:
+  title: django-access Admin API v2
+  version: 2.0.0
+paths:
+  /api/access/v2/admin/applications/:
+    get:
+      operationId: access_applications_list
+      description: '``access.manage``: read for GET, write otherwise.'
+      summary: Applications by name
+      parameters:
+      - in: query
+        name: page
+        schema:
+          type: integer
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+      tags:
+      - Access Applications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationListResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    post:
+      operationId: admin_applications_create
+      description: 409 for a name in use.
+      summary: Create an application
+      tags:
+      - Access Applications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ApplicationCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ApplicationCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+        '409':
+          description: No response body
+  /api/access/v2/admin/applications/{id}/:
+    get:
+      operationId: admin_applications_retrieve
+      description: '``access.manage``: read for GET, write otherwise.'
+      summary: One application
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Access Applications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    patch:
+      operationId: admin_applications_partial_update
+      description: Only `name`, `description` and `is_active`; no DELETE — deactivate
+        instead. 409 for a name in use.
+      summary: Rename, describe, activate or deactivate an application
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Access Applications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedApplicationUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedApplicationUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedApplicationUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+        '409':
+          description: No response body
+  /api/access/v2/admin/applications/{id}/tokens/:
+    get:
+      operationId: access_tokens_list
+      description: '``access.manage``: read for GET, write otherwise.'
+      summary: An application's tokens, newest first (never their values)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      - in: query
+        name: page
+        schema:
+          type: integer
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+      tags:
+      - Access Tokens
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenListResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    post:
+      operationId: admin_applications_tokens_create
+      description: 'The raw value is in this response only (`Cache-Control: no-store`).
+        Unknown scope, mixed publishable and secret scopes → 400.'
+      summary: Issue a token
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Access Tokens
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenSecretResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+        '409':
+          description: No response body
+  /api/access/v2/admin/audit/:
+    get:
+      operationId: access_audit_list
+      description: '``access.manage``: read for GET, write otherwise.'
+      summary: Audit entries, newest first
+      parameters:
+      - in: query
+        name: action
+        schema:
+          type: string
+      - in: query
+        name: actor
+        schema:
+          type: integer
+        description: Actor user id.
+      - in: query
+        name: from
+        schema:
+          type: string
+          format: date-time
+        description: Created at or after (ISO 8601 with offset).
+      - in: query
+        name: page
+        schema:
+          type: integer
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+      - in: query
+        name: to
+        schema:
+          type: string
+          format: date-time
+        description: Created at or before (ISO 8601 with offset).
+      tags:
+      - Access Audit
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditListResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/access/v2/admin/catalogue/:
+    get:
+      operationId: access_catalogue
+      description: 'Staff baseline: any active staff user.'
+      summary: Areas by module, the built-in roles with their computed permissions,
+        and the token scopes
+      tags:
+      - Access Catalogue
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogueResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/access/v2/admin/grants/:
+    get:
+      operationId: access_grants_list
+      description: '``access.manage``: read for GET, write otherwise.'
+      summary: Grants, filterable by role key, user and group
+      parameters:
+      - in: query
+        name: group_id
+        schema:
+          type: integer
+      - in: query
+        name: page
+        schema:
+          type: integer
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+      - in: query
+        name: role
+        schema:
+          type: string
+      - in: query
+        name: user_id
+        schema:
+          type: integer
+      tags:
+      - Access Grants
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GrantListResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    post:
+      operationId: admin_grants_create
+      description: Exactly one of `user_id` and `group_id`; a user who is not active
+        staff → 400; a duplicate → 409.
+      summary: Grant a role to one active staff user or one group
+      tags:
+      - Access Grants
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/GrantCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/GrantCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GrantResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+        '409':
+          description: No response body
+  /api/access/v2/admin/grants/{id}/:
+    delete:
+      operationId: admin_grants_destroy
+      description: 409 when nobody active would be left to manage access.
+      summary: Revoke a grant
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Access Grants
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+        '409':
+          description: No response body
+  /api/access/v2/admin/groups/:
+    get:
+      operationId: access_groups_list
+      description: '``access.manage``: read for GET, write otherwise.'
+      summary: Groups with member counts and grants
+      parameters:
+      - in: query
+        name: page
+        schema:
+          type: integer
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+      tags:
+      - Access Staff
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupListResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/access/v2/admin/roles/:
+    get:
+      operationId: access_roles_list
+      description: '``access.manage``: read for GET, write otherwise.'
+      summary: Built-in and custom roles with grant counts
+      parameters:
+      - in: query
+        name: page
+        schema:
+          type: integer
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+      tags:
+      - Access Roles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleListResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    post:
+      operationId: admin_roles_create
+      description: 400 ACCESS_MANAGE_RESERVED for any access.manage key; 409 for a
+        key in use (built-in included).
+      summary: Create a custom role
+      tags:
+      - Access Roles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RoleCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RoleCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleDetailResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+        '409':
+          description: No response body
+  /api/access/v2/admin/roles/{id}/:
+    get:
+      operationId: admin_roles_retrieve
+      description: '``access.manage``: read for GET, write otherwise.'
+      summary: One role with its effective permissions
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Access Roles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleDetailResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    patch:
+      operationId: admin_roles_partial_update
+      description: '`permissions` replaces the whole set. Built-in roles and lockout
+        → 409; access.manage → 400.'
+      summary: Update a custom role
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Access Roles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedRoleUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedRoleUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedRoleUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleDetailResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+        '409':
+          description: No response body
+    delete:
+      operationId: admin_roles_destroy
+      description: Built-in roles and lockout → 409.
+      summary: Delete a custom role with its grants
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Access Roles
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+        '409':
+          description: No response body
+  /api/access/v2/admin/staff/:
+    get:
+      operationId: access_staff_list
+      description: '``access.manage``: read for GET, write otherwise.'
+      summary: Active staff users with their roles (direct and through groups)
+      parameters:
+      - in: query
+        name: page
+        schema:
+          type: integer
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+      - in: query
+        name: search
+        schema:
+          type: string
+      tags:
+      - Access Staff
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StaffListResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    post:
+      operationId: access_staff_create
+      description: 'Never a superuser. No `password` → one is generated and returned
+        in this response only (`Cache-Control: no-store`); a given password is never
+        echoed. Taken username or e-mail (any case) → 409; unknown role, invalid field
+        or a password the validators refuse → 400 on that field.'
+      summary: Create an active staff account with one role
+      tags:
+      - Access Staff
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/StaffCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/StaffCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StaffCreateResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+        '409':
+          description: No response body
+  /api/access/v2/admin/staff/{user_id}/:
+    get:
+      operationId: admin_staff_retrieve
+      description: '``access.manage``: read for GET, write otherwise.'
+      summary: One active staff user with groups and grants
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Access Staff
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StaffDetailResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/access/v2/admin/tokens/{id}/expiry/:
+    post:
+      operationId: admin_tokens_expiry_create
+      description: Audited `token.expiry`. Legacy keys never expire by themselves;
+        a team sets or clears it here.
+      summary: Set or clear a token's expiry
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Access Tokens
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenExpiryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenExpiryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenExpiryRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+        '409':
+          description: No response body
+  /api/access/v2/admin/tokens/{id}/revoke/:
+    post:
+      operationId: admin_tokens_revoke_create
+      description: 'Idempotent: an already revoked token answers 200 again, without
+        a second audit row.'
+      summary: Revoke a token at once
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Access Tokens
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/access/v2/admin/tokens/{id}/rotate/:
+    post:
+      operationId: admin_tokens_rotate_create
+      description: 'The raw value is in this response only (`Cache-Control: no-store`).
+        The old token keeps working for `overlap_hours`. A revoked token → 409.'
+      summary: 'Rotate a token: a successor with the same scopes and channel'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Access Tokens
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRotateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRotateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRotateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenSecretResponse'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+        '409':
+          description: No response body
+  /api/access/v2/me/:
+    get:
+      operationId: access_me
+      description: 'Any authenticated user: staff get the gate mode, granted roles
+        and effective area permissions; a customer gets the user block only.'
+      summary: The current user's roles and effective area permissions
+      tags:
+      - Access Me
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+          description: ''
+        '401':
+          description: No response body
+components:
+  schemas:
+    ApplicationCreateRequest:
+      additionalProperties: false
+      properties:
+        name:
+          description: Unique display name.
+          examples:
+          - Storefront
+          maxLength: 128
+          minLength: 1
+          title: Name
+          type: string
+        description:
+          default: ''
+          description: What the application is for.
+          maxLength: 1000
+          title: Description
+          type: string
+      required:
+      - name
+      title: ApplicationCreateRequest
+      type: object
+    ApplicationListResponse:
+      properties:
+        count:
+          title: Count
+          type: integer
+        next:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next
+        previous:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Previous
+        results:
+          items:
+            $ref: '#/components/schemas/ApplicationResponse'
+          title: Results
+          type: array
+      required:
+      - count
+      - next
+      - previous
+      - results
+      title: ApplicationListResponse
+      type: object
+    ApplicationResponse:
+      properties:
+        id:
+          examples:
+          - 3
+          title: Id
+          type: integer
+        name:
+          examples:
+          - Storefront
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        is_active:
+          description: False stops every token of the application.
+          title: Is Active
+          type: boolean
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+      required:
+      - id
+      - name
+      - description
+      - is_active
+      - created_at
+      title: ApplicationResponse
+      type: object
+    AreaResponse:
+      properties:
+        key:
+          description: Area key.
+          examples:
+          - pim.products
+          title: Key
+          type: string
+        label:
+          description: English label; the CMS translates by key.
+          examples:
+          - Products and media
+          title: Label
+          type: string
+        levels:
+          description: Levels the area offers.
+          examples:
+          - - read
+            - write
+          items:
+            type: string
+          title: Levels
+          type: array
+        sensitive:
+          description: Sensitivity flags.
+          examples:
+          - - pii
+          items:
+            type: string
+          title: Sensitive
+          type: array
+        assignable:
+          description: A custom role may hold it (false only for access.manage).
+          title: Assignable
+          type: boolean
+      required:
+      - key
+      - label
+      - levels
+      - sensitive
+      - assignable
+      title: AreaResponse
+      type: object
+    AuditEntryResponse:
+      properties:
+        id:
+          title: Id
+          type: integer
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        actor_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Actor Id
+        actor_label:
+          examples:
+          - admin
+          title: Actor Label
+          type: string
+        action:
+          examples:
+          - grant.create
+          title: Action
+          type: string
+        target_type:
+          examples:
+          - django_access.grant
+          title: Target Type
+          type: string
+        target_id:
+          title: Target Id
+          type: string
+        target_label:
+          title: Target Label
+          type: string
+        detail:
+          additionalProperties: true
+          title: Detail
+          type: object
+        ip:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Client address by the NUM_PROXIES rule.
+          title: Ip
+      required:
+      - id
+      - created_at
+      - actor_id
+      - actor_label
+      - action
+      - target_type
+      - target_id
+      - target_label
+      - detail
+      - ip
+      title: AuditEntryResponse
+      type: object
+    AuditListResponse:
+      properties:
+        count:
+          title: Count
+          type: integer
+        next:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next
+        previous:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Previous
+        results:
+          items:
+            $ref: '#/components/schemas/AuditEntryResponse'
+          title: Results
+          type: array
+      required:
+      - count
+      - next
+      - previous
+      - results
+      title: AuditListResponse
+      type: object
+    BuiltinRoleResponse:
+      properties:
+        key:
+          examples:
+          - viewer
+          title: Key
+          type: string
+        name:
+          examples:
+          - Viewer
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        permissions:
+          additionalProperties:
+            type: string
+          description: '`{area: read | write}` computed from the catalogue.'
+          title: Permissions
+          type: object
+      required:
+      - key
+      - name
+      - description
+      - permissions
+      title: BuiltinRoleResponse
+      type: object
+    CatalogueResponse:
+      properties:
+        modules:
+          items:
+            $ref: '#/components/schemas/ModuleAreasResponse'
+          title: Modules
+          type: array
+        roles:
+          items:
+            $ref: '#/components/schemas/BuiltinRoleResponse'
+          title: Roles
+          type: array
+        scopes:
+          items:
+            $ref: '#/components/schemas/ScopeResponse'
+          title: Scopes
+          type: array
+        token_rotation_days:
+          description: '`ACCESS_TOKEN_ROTATION_DAYS`: a token this many days old is
+            `rotation_due` (0 = never).'
+          examples:
+          - 365
+          title: Token Rotation Days
+          type: integer
+      required:
+      - modules
+      - roles
+      - scopes
+      - token_rotation_days
+      title: CatalogueResponse
+      type: object
+    GrantCreateRequest:
+      additionalProperties: false
+      properties:
+        role:
+          description: Role key.
+          examples:
+          - viewer
+          pattern: ^[a-z][a-z0-9_-]{1,49}$
+          title: Role
+          type: string
+        user_id:
+          anyOf:
+          - minimum: 1
+            type: integer
+          - type: 'null'
+          default: null
+          description: An active staff user; or `group_id`.
+          title: User Id
+        group_id:
+          anyOf:
+          - minimum: 1
+            type: integer
+          - type: 'null'
+          default: null
+          description: An `auth.Group`; or `user_id`.
+          title: Group Id
+      required:
+      - role
+      title: GrantCreateRequest
+      type: object
+    GrantListResponse:
+      properties:
+        count:
+          title: Count
+          type: integer
+        next:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next
+        previous:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Previous
+        results:
+          items:
+            $ref: '#/components/schemas/GrantResponse'
+          title: Results
+          type: array
+      required:
+      - count
+      - next
+      - previous
+      - results
+      title: GrantListResponse
+      type: object
+    GrantResponse:
+      properties:
+        id:
+          examples:
+          - 12
+          title: Id
+          type: integer
+        role:
+          $ref: '#/components/schemas/RoleRef'
+        user:
+          anyOf:
+          - $ref: '#/components/schemas/UserRef'
+          - type: 'null'
+          description: The holder, or null for a group grant.
+        group:
+          anyOf:
+          - $ref: '#/components/schemas/GroupRef'
+          - type: 'null'
+          description: The holder, or null for a user grant.
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+      required:
+      - id
+      - role
+      - user
+      - group
+      - created_at
+      title: GrantResponse
+      type: object
+    GroupListResponse:
+      properties:
+        count:
+          title: Count
+          type: integer
+        next:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next
+        previous:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Previous
+        results:
+          items:
+            $ref: '#/components/schemas/GroupResponse'
+          title: Results
+          type: array
+      required:
+      - count
+      - next
+      - previous
+      - results
+      title: GroupListResponse
+      type: object
+    GroupRef:
+      properties:
+        id:
+          title: Id
+          type: integer
+        name:
+          title: Name
+          type: string
+      required:
+      - id
+      - name
+      title: GroupRef
+      type: object
+    GroupResponse:
+      properties:
+        id:
+          title: Id
+          type: integer
+        name:
+          title: Name
+          type: string
+        member_count:
+          title: Member Count
+          type: integer
+        grants:
+          items:
+            $ref: '#/components/schemas/GrantResponse'
+          title: Grants
+          type: array
+      required:
+      - id
+      - name
+      - member_count
+      - grants
+      title: GroupResponse
+      type: object
+    MeResponse:
+      properties:
+        user:
+          $ref: '#/components/schemas/MeUserResponse'
+        gate_mode:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: enforce, observe or off; null for a non-staff user.
+          title: Gate Mode
+        manages_access:
+          title: Manages Access
+          type: boolean
+        roles:
+          items:
+            $ref: '#/components/schemas/MeRoleResponse'
+          title: Roles
+          type: array
+        permissions:
+          additionalProperties:
+            type: string
+          description: '`{area: read | write}`; `{}` for a non-staff user.'
+          title: Permissions
+          type: object
+      required:
+      - user
+      - gate_mode
+      - manages_access
+      - roles
+      - permissions
+      title: MeResponse
+      type: object
+    MeRoleResponse:
+      properties:
+        key:
+          title: Key
+          type: string
+        name:
+          title: Name
+          type: string
+      required:
+      - key
+      - name
+      title: MeRoleResponse
+      type: object
+    MeUserResponse:
+      properties:
+        id:
+          title: Id
+          type: integer
+        username:
+          title: Username
+          type: string
+        email:
+          title: Email
+          type: string
+        first_name:
+          title: First Name
+          type: string
+        last_name:
+          title: Last Name
+          type: string
+        is_staff:
+          title: Is Staff
+          type: boolean
+        is_superuser:
+          title: Is Superuser
+          type: boolean
+      required:
+      - id
+      - username
+      - email
+      - first_name
+      - last_name
+      - is_staff
+      - is_superuser
+      title: MeUserResponse
+      type: object
+    ModuleAreasResponse:
+      properties:
+        module:
+          description: App label of the owning module.
+          examples:
+          - django_pim
+          title: Module
+          type: string
+        areas:
+          items:
+            $ref: '#/components/schemas/AreaResponse'
+          title: Areas
+          type: array
+      required:
+      - module
+      - areas
+      title: ModuleAreasResponse
+      type: object
+    PatchedApplicationUpdateRequest:
+      additionalProperties: false
+      properties:
+        name:
+          anyOf:
+          - maxLength: 128
+            minLength: 1
+            type: string
+          - type: 'null'
+          default: null
+          description: Unique display name.
+          title: Name
+        description:
+          anyOf:
+          - maxLength: 1000
+            type: string
+          - type: 'null'
+          default: null
+          description: What the application is for.
+          title: Description
+        is_active:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          default: null
+          description: False stops every token of the application.
+          title: Is Active
+      title: ApplicationUpdateRequest
+      type: object
+    PatchedRoleUpdateRequest:
+      additionalProperties: false
+      properties:
+        name:
+          anyOf:
+          - maxLength: 100
+            minLength: 1
+            type: string
+          - type: 'null'
+          default: null
+          description: Display name.
+          title: Name
+        description:
+          anyOf:
+          - maxLength: 1000
+            type: string
+          - type: 'null'
+          default: null
+          description: What the role is for.
+          title: Description
+        permissions:
+          anyOf:
+          - items:
+              maxLength: 128
+              type: string
+            type: array
+          - type: 'null'
+          default: null
+          description: Replaces the whole permission set.
+          title: Permissions
+      title: RoleUpdateRequest
+      type: object
+    RoleCreateRequest:
+      additionalProperties: false
+      properties:
+        key:
+          description: Unique slug.
+          examples:
+          - warehouse
+          pattern: ^[a-z][a-z0-9_-]{1,49}$
+          title: Key
+          type: string
+        name:
+          description: Display name.
+          examples:
+          - Warehouse
+          maxLength: 100
+          minLength: 1
+          title: Name
+          type: string
+        description:
+          default: ''
+          description: What the role is for.
+          maxLength: 1000
+          title: Description
+          type: string
+        permissions:
+          description: Permission keys `<area>:<level>`.
+          examples:
+          - - qms.stock:write
+          items:
+            maxLength: 128
+            type: string
+          title: Permissions
+          type: array
+      required:
+      - key
+      - name
+      title: RoleCreateRequest
+      type: object
+    RoleDetailResponse:
+      properties:
+        id:
+          examples:
+          - 5
+          title: Id
+          type: integer
+        key:
+          examples:
+          - warehouse
+          title: Key
+          type: string
+        name:
+          examples:
+          - Warehouse
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        builtin:
+          description: Built-in roles are neither editable nor deletable.
+          title: Builtin
+          type: boolean
+        grant_count:
+          description: Grants to users and groups.
+          examples:
+          - 3
+          title: Grant Count
+          type: integer
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        updated_at:
+          format: date-time
+          title: Updated At
+          type: string
+        permissions:
+          additionalProperties:
+            type: string
+          description: 'Effective `{area: read | write}`.'
+          title: Permissions
+          type: object
+      required:
+      - id
+      - key
+      - name
+      - description
+      - builtin
+      - grant_count
+      - created_at
+      - updated_at
+      - permissions
+      title: RoleDetailResponse
+      type: object
+    RoleListResponse:
+      properties:
+        count:
+          title: Count
+          type: integer
+        next:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next
+        previous:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Previous
+        results:
+          items:
+            $ref: '#/components/schemas/RoleResponse'
+          title: Results
+          type: array
+      required:
+      - count
+      - next
+      - previous
+      - results
+      title: RoleListResponse
+      type: object
+    RoleRef:
+      properties:
+        id:
+          title: Id
+          type: integer
+        key:
+          title: Key
+          type: string
+        name:
+          title: Name
+          type: string
+      required:
+      - id
+      - key
+      - name
+      title: RoleRef
+      type: object
+    RoleResponse:
+      properties:
+        id:
+          examples:
+          - 5
+          title: Id
+          type: integer
+        key:
+          examples:
+          - warehouse
+          title: Key
+          type: string
+        name:
+          examples:
+          - Warehouse
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        builtin:
+          description: Built-in roles are neither editable nor deletable.
+          title: Builtin
+          type: boolean
+        grant_count:
+          description: Grants to users and groups.
+          examples:
+          - 3
+          title: Grant Count
+          type: integer
+        created_at:
+          format: date-time
+          title: Created At
+          type: string
+        updated_at:
+          format: date-time
+          title: Updated At
+          type: string
+      required:
+      - id
+      - key
+      - name
+      - description
+      - builtin
+      - grant_count
+      - created_at
+      - updated_at
+      title: RoleResponse
+      type: object
+    ScopeResponse:
+      properties:
+        key:
+          description: Token scope key.
+          examples:
+          - checkout.storefront
+          title: Key
+          type: string
+        label:
+          description: English label; the CMS translates by key.
+          examples:
+          - Storefront carts and orders
+          title: Label
+          type: string
+        module:
+          description: App label of the owning module.
+          examples:
+          - django_checkout
+          title: Module
+          type: string
+        publishable:
+          description: Reaches browsers by design; publishable and secret never share
+            a token.
+          title: Publishable
+          type: boolean
+        routes:
+          description: Route patterns for docs, not matching rules.
+          items:
+            type: string
+          title: Routes
+          type: array
+      required:
+      - key
+      - label
+      - module
+      - publishable
+      - routes
+      title: ScopeResponse
+      type: object
+    StaffCreateRequest:
+      additionalProperties: false
+      description: |-
+        Shape only: the user model's own rules (username validator and length, e-mail format, uniqueness) and the password
+        validators are the service's call.
+      properties:
+        username:
+          description: Unique, case-insensitively.
+          examples:
+          - jdoe
+          maxLength: 254
+          minLength: 1
+          title: Username
+          type: string
+        email:
+          description: Unique, case-insensitively.
+          examples:
+          - jdoe@x.io
+          maxLength: 254
+          minLength: 3
+          title: Email
+          type: string
+        role:
+          description: Key of an existing role.
+          examples:
+          - editor
+          pattern: ^[a-z][a-z0-9_-]{1,49}$
+          title: Role
+          type: string
+        password:
+          anyOf:
+          - maxLength: 1024
+            minLength: 1
+            type: string
+          - type: 'null'
+          default: null
+          description: Omit to have one generated and returned once; a given password
+            is never echoed.
+          title: Password
+      required:
+      - username
+      - email
+      - role
+      title: StaffCreateRequest
+      type: object
+    StaffCreateResponse:
+      properties:
+        id:
+          title: Id
+          type: integer
+        username:
+          title: Username
+          type: string
+        email:
+          title: Email
+          type: string
+        name:
+          description: First and last name.
+          title: Name
+          type: string
+        is_superuser:
+          title: Is Superuser
+          type: boolean
+        roles:
+          items:
+            $ref: '#/components/schemas/StaffRoleResponse'
+          title: Roles
+          type: array
+        groups:
+          items:
+            $ref: '#/components/schemas/GroupRef'
+          title: Groups
+          type: array
+        grants:
+          description: Grants to the user and to their groups.
+          items:
+            $ref: '#/components/schemas/GrantResponse'
+          title: Grants
+          type: array
+        password:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: The generated password — in this response only; null when the
+            request gave one.
+          examples:
+          - <shown once>
+          title: Password
+      required:
+      - id
+      - username
+      - email
+      - name
+      - is_superuser
+      - roles
+      - groups
+      - grants
+      - password
+      title: StaffCreateResponse
+      type: object
+    StaffDetailResponse:
+      properties:
+        id:
+          title: Id
+          type: integer
+        username:
+          title: Username
+          type: string
+        email:
+          title: Email
+          type: string
+        name:
+          description: First and last name.
+          title: Name
+          type: string
+        is_superuser:
+          title: Is Superuser
+          type: boolean
+        roles:
+          items:
+            $ref: '#/components/schemas/StaffRoleResponse'
+          title: Roles
+          type: array
+        groups:
+          items:
+            $ref: '#/components/schemas/GroupRef'
+          title: Groups
+          type: array
+        grants:
+          description: Grants to the user and to their groups.
+          items:
+            $ref: '#/components/schemas/GrantResponse'
+          title: Grants
+          type: array
+      required:
+      - id
+      - username
+      - email
+      - name
+      - is_superuser
+      - roles
+      - groups
+      - grants
+      title: StaffDetailResponse
+      type: object
+    StaffListResponse:
+      properties:
+        count:
+          title: Count
+          type: integer
+        next:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next
+        previous:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Previous
+        results:
+          items:
+            $ref: '#/components/schemas/StaffResponse'
+          title: Results
+          type: array
+      required:
+      - count
+      - next
+      - previous
+      - results
+      title: StaffListResponse
+      type: object
+    StaffResponse:
+      properties:
+        id:
+          title: Id
+          type: integer
+        username:
+          title: Username
+          type: string
+        email:
+          title: Email
+          type: string
+        name:
+          description: First and last name.
+          title: Name
+          type: string
+        is_superuser:
+          title: Is Superuser
+          type: boolean
+        roles:
+          items:
+            $ref: '#/components/schemas/StaffRoleResponse'
+          title: Roles
+          type: array
+      required:
+      - id
+      - username
+      - email
+      - name
+      - is_superuser
+      - roles
+      title: StaffResponse
+      type: object
+    StaffRoleResponse:
+      properties:
+        key:
+          examples:
+          - editor
+          title: Key
+          type: string
+        name:
+          examples:
+          - Editor
+          title: Name
+          type: string
+        via_group:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: The group it comes through, or null when granted directly.
+          title: Via Group
+      required:
+      - key
+      - name
+      - via_group
+      title: StaffRoleResponse
+      type: object
+    StateEnum:
+      enum:
+      - active
+      - expired
+      - revoked
+      - application inactive
+      type: string
+    TokenCreateRequest:
+      additionalProperties: false
+      properties:
+        name:
+          default: ''
+          description: What the token is used for.
+          examples:
+          - Shop
+          maxLength: 128
+          title: Name
+          type: string
+        scopes:
+          description: Token scope keys from the catalogue; publishable and secret
+            scopes never share a token.
+          examples:
+          - - checkout.storefront
+          items:
+            maxLength: 64
+            type: string
+          maxItems: 32
+          minItems: 1
+          title: Scopes
+          type: array
+        channel_idx:
+          anyOf:
+          - maxLength: 64
+            minLength: 1
+            type: string
+          - type: 'null'
+          default: null
+          description: 'Pin to one channel (null = every channel). Not validated here:
+            channels live in other modules.'
+          examples:
+          - emporium
+          title: Channel Idx
+        expires_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          default: null
+          description: 'When the token stops working, or null for never; must be in
+            the future. Optional for every scope and without a maximum: an old token
+            is flagged `rotation_due` instead (`ACCESS_TOKEN_ROTATION_DAYS`).'
+          title: Expires At
+      required:
+      - scopes
+      title: TokenCreateRequest
+      type: object
+    TokenExpiryRequest:
+      additionalProperties: false
+      properties:
+        expires_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          description: 'The new expiry (in the future: else 400 `EXPIRY_IN_PAST`),
+            or null to clear it. Every token takes any future date or null. A revoked
+            token → 409.'
+          title: Expires At
+      required:
+      - expires_at
+      title: TokenExpiryRequest
+      type: object
+    TokenListResponse:
+      properties:
+        count:
+          title: Count
+          type: integer
+        next:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next
+        previous:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Previous
+        results:
+          items:
+            $ref: '#/components/schemas/TokenResponse'
+          title: Results
+          type: array
+      required:
+      - count
+      - next
+      - previous
+      - results
+      title: TokenListResponse
+      type: object
+    TokenResponse:
+      description: 'A token as it is shown after issue: identified by ``prefix`` and
+        ``last_four``, never by its value.'
+      properties:
+        id:
+          examples:
+          - 7
+          title: Id
+          type: integer
+        name:
+          examples:
+          - Shop
+          title: Name
+          type: string
+        prefix:
+          description: The first 12 characters; 6 for a legacy key, `legacy` for a
+            short one.
+          examples:
+          - ent_api_Ab3d
+          title: Prefix
+          type: string
+        last_four:
+          description: The last 4 characters; empty for a short legacy secret.
+          examples:
+          - x9Q2
+          title: Last Four
+          type: string
+        scopes:
+          examples:
+          - - checkout.storefront
+          items:
+            type: string
+          title: Scopes
+          type: array
+        channel_idx:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: The pinned channel, or null for every channel.
+          title: Channel Idx
+        expires_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Expires At
+        last_used_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Last Used At
+        revoked_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Revoked At
+        legacy:
+          description: Imported from a module's legacy key table.
+          title: Legacy
+          type: boolean
+        legacy_source:
+          description: '`<app>.<Model>#<pk>` of the legacy key (comma-separated when
+            one secret had several rows), empty for an issued token.'
+          title: Legacy Source
+          type: string
+        state:
+          allOf:
+          - $ref: '#/components/schemas/StateEnum'
+          description: 'The effective state: `application inactive` for an otherwise
+            active token of an inactive application — it fails every call.'
+          title: State
+        age_days:
+          description: Whole days since the token was issued (or imported).
+          examples:
+          - 12
+          title: Age Days
+          type: integer
+        rotation_due:
+          description: 'Active and at least `token_rotation_days` old: rotate it.
+            A recommendation — nothing is refused.'
+          title: Rotation Due
+          type: boolean
+      required:
+      - id
+      - name
+      - prefix
+      - last_four
+      - scopes
+      - channel_idx
+      - expires_at
+      - last_used_at
+      - revoked_at
+      - legacy
+      - legacy_source
+      - state
+      - age_days
+      - rotation_due
+      title: TokenResponse
+      type: object
+    TokenRotateRequest:
+      additionalProperties: false
+      properties:
+        overlap_hours:
+          default: 24
+          description: Hours the old token keeps working (0 = stops at once).
+          maximum: 8760
+          minimum: 0
+          title: Overlap Hours
+          type: integer
+        expires_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          default: null
+          description: 'Default: none — the successor inherits no expiry. When the
+            token stops working, or null for never; must be in the future. Optional
+            for every scope and without a maximum: an old token is flagged `rotation_due`
+            instead (`ACCESS_TOKEN_ROTATION_DAYS`).'
+          title: Expires At
+      title: TokenRotateRequest
+      type: object
+    TokenSecretResponse:
+      properties:
+        id:
+          examples:
+          - 7
+          title: Id
+          type: integer
+        name:
+          examples:
+          - Shop
+          title: Name
+          type: string
+        prefix:
+          description: The first 12 characters; 6 for a legacy key, `legacy` for a
+            short one.
+          examples:
+          - ent_api_Ab3d
+          title: Prefix
+          type: string
+        last_four:
+          description: The last 4 characters; empty for a short legacy secret.
+          examples:
+          - x9Q2
+          title: Last Four
+          type: string
+        scopes:
+          examples:
+          - - checkout.storefront
+          items:
+            type: string
+          title: Scopes
+          type: array
+        channel_idx:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: The pinned channel, or null for every channel.
+          title: Channel Idx
+        expires_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Expires At
+        last_used_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Last Used At
+        revoked_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Revoked At
+        legacy:
+          description: Imported from a module's legacy key table.
+          title: Legacy
+          type: boolean
+        legacy_source:
+          description: '`<app>.<Model>#<pk>` of the legacy key (comma-separated when
+            one secret had several rows), empty for an issued token.'
+          title: Legacy Source
+          type: string
+        state:
+          allOf:
+          - $ref: '#/components/schemas/StateEnum'
+          description: 'The effective state: `application inactive` for an otherwise
+            active token of an inactive application — it fails every call.'
+          title: State
+        age_days:
+          description: Whole days since the token was issued (or imported).
+          examples:
+          - 12
+          title: Age Days
+          type: integer
+        rotation_due:
+          description: 'Active and at least `token_rotation_days` old: rotate it.
+            A recommendation — nothing is refused.'
+          title: Rotation Due
+          type: boolean
+        raw:
+          description: The token value — in this response only; store it now, it is
+            never shown again.
+          examples:
+          - ent_api_<shown once>
+          title: Raw
+          type: string
+      required:
+      - id
+      - name
+      - prefix
+      - last_four
+      - scopes
+      - channel_idx
+      - expires_at
+      - last_used_at
+      - revoked_at
+      - legacy
+      - legacy_source
+      - state
+      - age_days
+      - rotation_due
+      - raw
+      title: TokenSecretResponse
+      type: object
+    UserRef:
+      properties:
+        id:
+          title: Id
+          type: integer
+        username:
+          title: Username
+          type: string
+      required:
+      - id
+      - username
+      title: UserRef
+      type: object
+  securitySchemes:
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

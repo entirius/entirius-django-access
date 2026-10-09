@@ -14,8 +14,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "MPL-2.0"
 dependencies = [
-    "Django>=4.2",
-    "djangorestframework>=3.14",
+    "Django>=5.1",
+    "djangorestframework>=3.15.2",
     "djangorestframework-simplejwt>=5.3",
     "drf-spectacular>=0.27",
     "pydantic>=2.0",
@@ -48,6 +48,7 @@ ignore = ["E501"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/**" = ["S101", "S105"]
+"tests/legacy_apps/**" = ["DJ008"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["django_access"]
@@ -59,6 +60,7 @@ quote-style = "double"
 DJANGO_SETTINGS_MODULE = "tests.settings"
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "-rs"  # name every skip: the local sqlite run skips the Postgres-only lockout race
 
 [tool.deptry]
 pep621_dev_dependency_groups = ["dev", "test"]
