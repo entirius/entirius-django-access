@@ -100,7 +100,7 @@ caller. Fix a `mixed` secret by rotation (`operations.md`) before the deploy goe
 
 After the upgrade migration `0002` every active non-superuser staff user holds **Manager**. Access management and
 token issuing stay with superusers until someone is granted Administrator — the `grant.migrate` rows in the audit list
-who got what. The Django admin site stays with superusers whatever the grants (D32).
+who got what. The Django admin site stays with superusers whatever the grants.
 
 ## Rollback
 
