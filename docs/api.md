@@ -79,7 +79,7 @@ since issue or import; `rotation_due`: active and at least `token_rotation_days`
 ever carries `key_hash`.
 
 Token errors (400, v2 envelope): unknown or mixed scopes (`non_field_errors`); a past `expires_at`. No token needs an
-expiry and none has a maximum (D31). The expiry endpoint: a past date → `issue: EXPIRY_IN_PAST` on
+expiry and none has a maximum. The expiry endpoint: a past date → `issue: EXPIRY_IN_PAST` on
 `field: expires_at`; every live token takes any future date or `null`. A revoked or expired token (the old token of
 a rotation after its cut-off included) answers 409 and stays dead: issue a new one.
 
