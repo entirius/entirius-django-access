@@ -19,7 +19,7 @@ names and key fields — the real modules are not installed here. The `legacy_ro
 | File | Covers |
 |---|---|
 | `test_catalogue.py` / `test_registry.py` | areas, scopes, default rules, `AppConfig` overrides per label; checks `E001`–`E006` |
-| `test_checks.py` | `W002` (`E010`/`W010` are in `test_gate.py` and `security/test_modes.py`) |
+| `test_checks.py` | `W002`, `E012` under `check --deploy` (`E010`/`W010` are in `test_gate.py` and `security/test_modes.py`) |
 | `test_ownership.py` | `assert_routes_covered` per reason (`unmapped`, `foreign_rule`, `unknown_area`, `defaults`) on fixture apps (`faq_stub` declares, the checkout stub lives on the defaults, `widgets_stub` has neither; `ownership_urls.py`), `I001` |
 | `test_view_areas.py` | `access_area` / `access_levels` on DRF, Django and function views (`view_area_urls.py`): precedence, `area_source`, overrides on top, `require_own`, `I001`, `E007`/`E008`/`W003` |
 | `test_preflight.py` | `access_routes --unmapped`, `E011` under `check --deploy` (enforce, observe, full coverage) |

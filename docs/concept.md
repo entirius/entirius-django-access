@@ -52,7 +52,8 @@ and token issuing stay with superusers. The Django admin site stays with superus
 
 Permissions are cached per user under a version that every access change, group membership change and
 `is_staff`/`is_superuser`/`is_active` change bumps. With a per-process cache (LocMem) other processes see a change
-only after the timeout — production needs a shared cache (`django_access.W002`).
+only after the timeout — production needs a shared cache (`django_access.W002`; an Error, `E012`, under
+`check --deploy`).
 
 ## The gate
 

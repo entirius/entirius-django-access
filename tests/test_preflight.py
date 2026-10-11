@@ -13,6 +13,7 @@ from django.core.management.base import CommandError, SystemCheckError
 from django.test import override_settings
 
 UNMAPPED = "tests.ownership_urls"  # django_widgets: two admin routes without a rule
+E011 = "django_access.E011"  # the test settings' LocMem cache fails the deploy check on its own (E012)
 
 pytestmark = pytest.mark.django_db  # the check command runs the database checks too
 
@@ -60,18 +61,18 @@ def deploy_check() -> SystemCheckError | None:
 @override_settings(ROOT_URLCONF=UNMAPPED, ACCESS_GATE_MODE="enforce")
 def test_e011_stops_an_enforcing_deploy_over_unmapped_routes():
     error = deploy_check()
-    assert error is not None and "django_access.E011" in str(error)
+    assert error is not None and E011 in str(error)
     assert "2 admin route(s)" in str(error) and "access_routes --unmapped" in str(error)
 
 
 @override_settings(ROOT_URLCONF=UNMAPPED, ACCESS_GATE_MODE="observe")
 def test_e011_silent_in_observe():
-    assert deploy_check() is None
+    assert E011 not in str(deploy_check())
 
 
 @override_settings(ACCESS_GATE_MODE="enforce")
 def test_e011_silent_with_full_coverage():
-    assert deploy_check() is None
+    assert E011 not in str(deploy_check())
 
 
 @override_settings(ROOT_URLCONF=UNMAPPED, ACCESS_GATE_MODE="enforce")

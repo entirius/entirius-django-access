@@ -13,7 +13,7 @@ keys, rotation, revocation, the purge, lockouts): `operations.md`.
 | Python ≥ 3.11, Django ≥ 5.1, DRF + `rest_framework_simplejwt` + `drf_spectacular`, Pydantic 2 | the admin API is JWT + Pydantic; the gate reads the views' DRF classes | `manage.py check` |
 | `entirius-django-utils` ≥ 2.2.0, its v2 handler as `REST_FRAMEWORK["EXCEPTION_HANDLER"]` | refusal and error bodies are the v2 envelope | a 403 carries `debug_id` |
 | `SPECTACULAR_SETTINGS["OAS_VERSION"] = "3.1.0"` | Pydantic examples are JSON Schema 2020-12 | `manage.py spectacular --validate` |
-| A shared cache (Redis) as `CACHES["default"]` | permission cache versions must reach every process | no `django_access.W002` |
+| A shared cache (Redis) as `CACHES["default"]` | permission cache versions and failed-login counters must reach every process | no `django_access.W002`; `check --deploy` without `django_access.E012` |
 
 ## INSTALLED_APPS, middleware, URLs
 
@@ -85,8 +85,9 @@ module. Tokens and `verify_api_key` are not affected by the mode.
 
 - **Shared cache — a hard requirement in production.** Permissions are cached per process-local version key, so with
   LocMem a revoke or role change reaches only the process that made it; a revoked grant keeps working in the other
-  workers until the cache timeout. LocMem or Dummy as the default cache with `DEBUG=False` raises
-  `django_access.W002` — treat it as a deploy blocker.
+  workers until the cache timeout, and every worker counts failed logins on its own, so the login limits multiply by
+  the worker count. LocMem or Dummy as the default cache is the Error `django_access.E012` under `check --deploy` (any
+  `DEBUG`), which stops the deploy; a plain `check` with `DEBUG=False` warns `django_access.W002`.
 - **Proxy depth.** Audit IPs and every per-IP throttle use DRF's `NUM_PROXIES`. On Volkanos set the service setting
   `DRF_NUM_PROXIES` to the real proxy depth — `1` behind Cloudflare → Caddy → nginx; other hosts set
   `REST_FRAMEWORK["NUM_PROXIES"]`. Unset, the client address is `REMOTE_ADDR`, and a client-chosen
@@ -99,7 +100,7 @@ module. Tokens and `verify_api_key` are not affected by the mode.
 
 ```
 manage.py access_routes --unmapped                 # exit 1 → stop, or deploy in observe (upgrade.md)
-manage.py check --deploy --fail-level ERROR        # E011: enforce over unmapped admin routes
+manage.py check --deploy --fail-level ERROR        # E011: enforce over unmapped admin routes; E012: per-process cache
 manage.py migrate                                  # 0001–0004; post_migrate imports the legacy keys
 manage.py access_import_legacy_keys --check        # exit 1 → stop: a key is not imported or mixed
 # only now: traffic to the new release

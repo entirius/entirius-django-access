@@ -169,6 +169,9 @@
   before the admin site (`docs/install.md`).
 - `set_token_expiry` refuses a token that is already expired, the old token of a rotation after its cut-off included
   (409 on `POST admin/tokens/<id>/expiry/`): a new date or `null` used to make it valid again.
+- A per-process default cache (LocMem, Dummy) is the Error `django_access.E012` under `check --deploy`, in any
+  `DEBUG`; the plain check keeps the Warning `W002`. With such a cache a revoked grant keeps working in the other
+  workers and the login limits multiply by the worker count.
 
 ## 0.1.0 (unreleased)
 

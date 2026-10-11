@@ -39,7 +39,7 @@ Read first: `docs/install.md` (host) · `docs/upgrade.md` (before the first depl
 ```
 src/django_access/
 ├── apps.py (checks, cache signals, post_migrate legacy import)  middleware.py (AccessGateMiddleware)
-│   openapi.py (ApiKeyAuth hook)  checks.py (E001–E008, E010, E011, W002, W003, W010, I001)  exceptions.py  urls.py
+│   openapi.py (ApiKeyAuth hook)  checks.py (E001–E008, E010–E012, W002, W003, W010, I001)  exceptions.py  urls.py
 │   signals.py (cache invalidation, staff_user_created)
 │   testing.py (assert_routes_covered, for module test suites)
 ├── catalogue/    areas (49)  scopes (9 token scopes)  defaults (route rules, method and area overrides)  registry
