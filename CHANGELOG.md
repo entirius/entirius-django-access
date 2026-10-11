@@ -161,6 +161,13 @@
 - `login_guard`: a per-username counter from any address, `AUTH_TOKEN_MAX_FAILURES_PER_USER` (50) per
   `AUTH_TOKEN_USER_FAILURE_WINDOW_S` (3600); `Throttled.wait` is the longest window that blocks.
 
+### Security
+
+- `login_guard.guarded_admin_login(admin.site.login)`: the Django admin login form counts on the failed-login
+  counters of `api/token/` (same keys, limits and windows) and answers 429 with `Retry-After` when one blocks. The
+  form accepted unlimited guesses, also while `api/token/` was blocked. The service routes it at `admin/login/`
+  before the admin site (`docs/install.md`).
+
 ## 0.1.0 (unreleased)
 
 - Scaffold from the Entirius module template.
