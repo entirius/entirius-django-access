@@ -172,6 +172,8 @@
 - A per-process default cache (LocMem, Dummy) is the Error `django_access.E012` under `check --deploy`, in any
   `DEBUG`; the plain check keeps the Warning `W002`. With such a cache a revoked grant keeps working in the other
   workers and the login limits multiply by the worker count.
+- Staff create answers a taken username and a taken e-mail address with one 409 message that names neither the field
+  nor the account that holds the value (it said "The e-mail address is taken" for any user's address).
 
 ## 0.1.0 (unreleased)
 

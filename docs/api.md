@@ -49,7 +49,8 @@ to an unknown group or to anyone but an active staff user → 400 (the message n
 grant → 409.
 
 Staff create (`access_staff_create`): an active staff account, never a superuser, with the role granted (`staff.create`
-and `grant.create` audit rows, no password value in either). A username or e-mail taken by any user (any case) → 409;
+and `grant.create` audit rows, no password value in either). A username or e-mail taken by any user (any case) → 409 with one message
+for both, which names neither the field nor the account;
 an unknown role, an invalid username or e-mail (the user model's validators) or a password Django's
 `AUTH_PASSWORD_VALIDATORS` refuse → 400 on that field. The `staff_user_created(sender=<user model>, user, actor)`
 signal is sent inside the transaction: a receiver that raises rolls the account back (accounts adds the `Customer`

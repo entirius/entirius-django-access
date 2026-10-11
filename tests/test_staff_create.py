@@ -90,6 +90,16 @@ def test_a_taken_username_or_email_in_any_case_is_409(admin_api, make_user, take
     assert response.status_code == 409 and response.json()["error"] == "CONFLICT"
 
 
+def test_a_conflict_never_says_which_field_of_which_account_collided(admin_api, make_user):
+    """One answer for a taken username and a taken e-mail, a customer's address included."""
+    make_user(username="jdoe", email="staff@example.com")
+    make_user(username="shopper", email="shopper@example.com", is_staff=False)
+    taken = [{"username": "jdoe"}, {"email": "staff@example.com"}, {"email": "shopper@example.com"}]
+    responses = [create(admin_api, **{**body(username="other", email="other@example.com"), **item}) for item in taken]
+    assert [response.status_code for response in responses] == [409, 409, 409]
+    assert len({response.json()["message"] for response in responses}) == 1
+
+
 def test_a_weak_password_is_400_on_password(admin_api, settings):
     settings.AUTH_PASSWORD_VALIDATORS = VALIDATORS
     response = create(admin_api, password=WEAK)
