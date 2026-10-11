@@ -167,6 +167,8 @@
   counters of `api/token/` (same keys, limits and windows) and answers 429 with `Retry-After` when one blocks. The
   form accepted unlimited guesses, also while `api/token/` was blocked. The service routes it at `admin/login/`
   before the admin site (`docs/install.md`).
+- `set_token_expiry` refuses a token that is already expired, the old token of a rotation after its cut-off included
+  (409 on `POST admin/tokens/<id>/expiry/`): a new date or `null` used to make it valid again.
 
 ## 0.1.0 (unreleased)
 

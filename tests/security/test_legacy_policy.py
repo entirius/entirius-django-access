@@ -103,6 +103,33 @@ def test_a_revoked_token_is_refused(legacy_row, system):
     assert expiry_rows() == []
 
 
+@pytest.mark.parametrize("revive", [lambda: days(30), lambda: None])
+def test_an_expired_token_is_refused_and_stays_expired(issue, system, clock, key_request, revive):
+    token, raw = issue(["vault.api"], expires_at=days(1))
+    clock.advance(days=2)
+    with pytest.raises(AccessConflict):
+        tokens.set_token_expiry(token, expires_at=revive(), actor=system)
+    assert expiry_rows() == []
+    assert verify_api_key(key_request(HTTP_X_API_KEY=raw), "vault.api") is None
+
+
+def test_the_old_token_of_a_rotation_stays_dead_after_its_cut_off(issue, system, clock, key_request):
+    token, raw = issue(["vault.api"])
+    tokens.rotate_token(token, actor=system, overlap_hours=1)
+    clock.advance(hours=1)
+    with pytest.raises(AccessConflict):
+        tokens.set_token_expiry(token, expires_at=None, actor=system)
+    assert verify_api_key(key_request(HTTP_X_API_KEY=raw), "vault.api") is None
+
+
+def test_api_409_on_an_expired_token(issue, admin_api, clock):
+    token, _ = issue(["vault.api"], expires_at=days(1))
+    clock.advance(days=2)
+    response = admin_api.post(URL.format(token.pk), {"expires_at": None}, format="json")
+    assert response.status_code == 409 and response.json()["error"] == "CONFLICT"
+    assert ApiToken.objects.get(pk=token.pk).expires_at is not None and expiry_rows() == []
+
+
 def test_api_sets_and_clears_without_secret_material(legacy_row, admin_api):
     token, value = imported(legacy_row)
     later = days(30).isoformat()

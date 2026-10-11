@@ -61,7 +61,8 @@ somebody revokes, rotates or expires it; the key modules never fall back to thei
   writes the rows. `prefix…last_four` only (`legacy…` for a short secret).
 - **Expiry** — a team sets or clears one per token: `access_token expire <id> --at 2027-06-30` / `--clear`, or
   `POST tokens/<id>/expiry/` (`api.md`). Any future date or none, for every token (D31). A past date is refused —
-  revoke instead. One `token.expiry` audit row each.
+  revoke instead. A token that is already expired or revoked is refused too: an expiry never revives it, issue a new
+  token. One `token.expiry` audit row each.
 - **Move a caller off a legacy key** — issue a new token with the same scope and pin, switch the caller, revoke the
   legacy token (`access_token revoke <id>`).
 

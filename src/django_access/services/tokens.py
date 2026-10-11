@@ -196,12 +196,13 @@ def _iso(value: datetime | None) -> str | None:
 
 @transaction.atomic
 def set_token_expiry(token: ApiToken, *, expires_at: datetime | None, actor: Actor) -> ApiToken:
-    """Set or clear (``None``) a token's expiry: any future date or none, for every token (D28, D31). To stop a token
-    now, revoke it."""
+    """Set or clear (``None``) a token's expiry: any future date or none, for every live token (D28, D31). To stop a
+    token now, revoke it. A revoked or expired token stays dead — issue a new one."""
     token = ApiToken.objects.select_for_update().get(pk=token.pk)
-    if token.revoked_at:
-        raise AccessConflict("A revoked token cannot get a new expiry")
-    _check_expiry(expires_at, timezone.now())
+    now = timezone.now()
+    if (state := lifecycle_state(token, now)) != ACTIVE:
+        raise AccessConflict(f"A token that is {state} cannot get a new expiry")
+    _check_expiry(expires_at, now)
     change = {"token_id": token.pk, "legacy": token.legacy, "from": _iso(token.expires_at), "to": _iso(expires_at)}
     token.expires_at = expires_at
     token.save(update_fields=["expires_at"])
