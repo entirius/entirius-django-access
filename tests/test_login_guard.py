@@ -2,12 +2,16 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 import pytest
+from django.contrib import admin
+from django.contrib.auth import get_user_model
+from django.contrib.auth.backends import ModelBackend
 from django.core.cache import cache
 from rest_framework.exceptions import Throttled
 from rest_framework.parsers import JSONParser
 from rest_framework.request import Request
 
 from django_access.services import login_guard
+from django_access.services.route_map import classify
 
 ADDRESS, OTHER_ADDRESS = "192.0.2.10", "192.0.2.99"
 
@@ -112,3 +116,95 @@ def test_login_username_is_stripped_like_the_serializer(rf):
     assert login_guard.login_username(Request(raw, parsers=[JSONParser()])) == "staffer"
     listed = rf.post("/login/", [1], content_type="application/json")
     assert login_guard.login_username(Request(listed, parsers=[JSONParser()])) == ""
+
+
+# --- the Django admin login form ----------------------------------------------------------------------------------
+
+ADMIN_LOGIN = "/admin/login/"
+PASSWORD = "correct-horse-battery"  # noqa: S105 — throwaway test user
+admin_form = pytest.mark.urls("tests.admin_login_urls")
+
+
+@pytest.fixture
+def staffer(make_user):
+    return make_user(username="staffer", password=PASSWORD)
+
+
+def _admin_login(client, username: str, password: str, address: str = ADDRESS):
+    return client.post(ADMIN_LOGIN, {"username": username, "password": password}, REMOTE_ADDR=address)
+
+
+@admin_form
+def test_admin_form_failures_block_the_user_on_that_address_even_with_the_right_password(client, staffer):
+    assert [_admin_login(client, "staffer", "wrong").status_code for _ in range(3)] == [200] * 3
+    refused = _admin_login(client, "staffer", PASSWORD)
+    assert (refused.status_code, refused["Retry-After"]) == (429, "60")
+    assert "_auth_user_id" not in client.session
+    assert _admin_login(client, "staffer", PASSWORD, OTHER_ADDRESS).status_code == 302
+
+
+@admin_form
+def test_admin_form_failures_over_usernames_block_the_address(client, staffer):
+    assert {_admin_login(client, f"guess{i}", "wrong").status_code for i in range(5)} == {200}
+    assert _admin_login(client, "staffer", PASSWORD).status_code == 429
+
+
+@admin_form
+def test_a_user_blocked_on_the_api_login_is_refused_on_the_admin_form(client, staffer, at):
+    _fail(at(), "staffer", 3)
+    assert _admin_login(client, " staffer ", PASSWORD).status_code == 429
+    assert client.get(ADMIN_LOGIN, REMOTE_ADDR=ADDRESS).status_code == 200
+
+
+@admin_form
+def test_a_look_alike_spelling_of_the_username_hits_the_same_counter(client, staffer):
+    """The form normalises the username (NFKC) before it authenticates, so the counter key must too."""
+    assert [_admin_login(client, "ｓｔａｆｆｅｒ", "wrong").status_code for _ in range(3)] == [200] * 3
+    assert _admin_login(client, "staffer", PASSWORD).status_code == 429
+
+
+@admin_form
+def test_admin_form_failures_count_on_the_api_login_counters(client, staffer, at):
+    for _ in range(3):
+        _admin_login(client, "staffer", "wrong")
+    assert _blocked(at(), "staffer")
+
+
+@admin_form
+def test_an_admin_form_success_clears_the_user_address_counter(client, staffer, at):
+    for _ in range(2):
+        assert [_admin_login(client, "staffer", "wrong").status_code for _ in range(2)] == [200] * 2
+        assert _admin_login(client, "staffer", PASSWORD).status_code == 302
+        client.logout()
+    assert not _blocked(at(), "staffer")
+
+
+@admin_form
+def test_a_signed_in_session_does_not_hide_failed_guesses(client, staffer, make_user):
+    make_user(username="other", password=PASSWORD)
+    assert _admin_login(client, "other", PASSWORD).status_code == 302
+    assert [_admin_login(client, "staffer", "wrong").status_code for _ in range(3)] == [200] * 3
+    assert _admin_login(client, "staffer", PASSWORD).status_code == 429
+
+
+class SignsInOther(ModelBackend):
+    """A backend that reads another credential than the posted pair (as a header-token backend does)."""
+
+    def authenticate(self, request, **credentials):
+        return get_user_model().objects.get(username="other")
+
+
+@admin_form
+def test_a_login_as_somebody_else_does_not_clear_the_posted_username(client, staffer, make_user, settings):
+    make_user(username="other", password=PASSWORD)
+    assert [_admin_login(client, "staffer", "wrong").status_code for _ in range(2)] == [200] * 2
+    settings.AUTHENTICATION_BACKENDS = [f"{__name__}.SignsInOther"]
+    assert _admin_login(client, "staffer", "wrong").status_code == 302
+    settings.AUTHENTICATION_BACKENDS = ["django.contrib.auth.backends.ModelBackend"]
+    assert _admin_login(client, "staffer", "wrong").status_code == 200
+    assert _admin_login(client, "staffer", PASSWORD).status_code == 429
+
+
+def test_the_guarded_admin_login_stays_a_self_authenticating_staff_route():
+    info = classify("admin/login/", login_guard.guarded_admin_login(admin.site.login))
+    assert (info.owner, info.area, info.self_auth) == ("django", "staff.baseline", True)

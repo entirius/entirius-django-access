@@ -161,6 +161,20 @@
 - `login_guard`: a per-username counter from any address, `AUTH_TOKEN_MAX_FAILURES_PER_USER` (50) per
   `AUTH_TOKEN_USER_FAILURE_WINDOW_S` (3600); `Throttled.wait` is the longest window that blocks.
 
+### Security
+
+- `login_guard.guarded_admin_login(admin.site.login)`: the Django admin login form counts on the failed-login
+  counters of `api/token/` (same keys, limits and windows) and answers 429 with `Retry-After` when one blocks. The
+  form accepted unlimited guesses, also while `api/token/` was blocked. The service routes it at `admin/login/`
+  before the admin site (`docs/install.md`).
+- `set_token_expiry` refuses a token that is already expired, the old token of a rotation after its cut-off included
+  (409 on `POST admin/tokens/<id>/expiry/`): a new date or `null` used to make it valid again.
+- A per-process default cache (LocMem, Dummy) is the Error `django_access.E012` under `check --deploy`, in any
+  `DEBUG`; the plain check keeps the Warning `W002`. With such a cache a revoked grant keeps working in the other
+  workers and the login limits multiply by the worker count.
+- Staff create answers a taken username and a taken e-mail address with one 409 message that names neither the field
+  nor the account that holds the value (it said "The e-mail address is taken" for any user's address).
+
 ## 0.1.0 (unreleased)
 
 - Scaffold from the Entirius module template.

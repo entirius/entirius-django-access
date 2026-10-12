@@ -13,7 +13,7 @@ keys, rotation, revocation, the purge, lockouts): `operations.md`.
 | Python ≥ 3.11, Django ≥ 5.1, DRF + `rest_framework_simplejwt` + `drf_spectacular`, Pydantic 2 | the admin API is JWT + Pydantic; the gate reads the views' DRF classes | `manage.py check` |
 | `entirius-django-utils` ≥ 2.2.0, its v2 handler as `REST_FRAMEWORK["EXCEPTION_HANDLER"]` | refusal and error bodies are the v2 envelope | a 403 carries `debug_id` |
 | `SPECTACULAR_SETTINGS["OAS_VERSION"] = "3.1.0"` | Pydantic examples are JSON Schema 2020-12 | `manage.py spectacular --validate` |
-| A shared cache (Redis) as `CACHES["default"]` | permission cache versions must reach every process | no `django_access.W002` |
+| A shared cache (Redis) as `CACHES["default"]` | permission cache versions and failed-login counters must reach every process | no `django_access.W002`; `check --deploy` without `django_access.E012` |
 
 ## INSTALLED_APPS, middleware, URLs
 
@@ -42,8 +42,19 @@ SPECTACULAR_SETTINGS = {
 
 ```python
 # main/urls.py
+from django_access.services.login_guard import guarded_admin_login
+
+urlpatterns = [
+    path("admin/login/", guarded_admin_login(admin.site.login)),  # before the admin site: it resolves first
+    path("admin/", admin.site.urls),
+    # ...
+]
 urlpatterns.append(path("", include("django_access.urls")))
 ```
+
+`guarded_admin_login` puts the admin login form on the failed-login counters of `api/token/` (same keys, limits and
+windows): a blocked POST answers 429 with `Retry-After` before the password is checked, and a login blocked on one is
+blocked on the other. Without the line the admin form accepts guesses the API login refuses.
 
 `django_access.urls` mounts `api/access/v2/me/` and `api/access/v2/admin/…` (`api.md`). Keep the Django admin site
 at `admin/`: the route map puts that prefix in the admin set and opens it to superusers only (its login, logout and
@@ -58,7 +69,7 @@ fails on any admin route without an area and on any rule matching another module
 |---|---|---|
 | `ACCESS_GATE_MODE` | `"enforce"` | `enforce` refuses; `observe` logs refusals (`django_access.gate`) and lets through; `off` decides nothing. Any other value is enforced + `E010`; a non-`enforce` mode with `DEBUG=False` warns `W010` |
 | `ACCESS_TOKEN_ROTATION_DAYS` | `365` | an active token this many days old is `rotation_due` (API, CLI, legacy report, catalogue `token_rotation_days`); a recommendation, nothing is refused; `0` turns it off |
-| `AUTH_TOKEN_FAILURE_WINDOW_S` | `900` | window of the per username + address and per address failed-login counters (`services.login_guard`); a login they block answers 429 for this long |
+| `AUTH_TOKEN_FAILURE_WINDOW_S` | `900` | window of the per username + address and per address failed-login counters (`services.login_guard`: `api/token/` and the admin login form); a login they block answers 429 for this long |
 | `AUTH_TOKEN_MAX_FAILURES_PER_USER_IP` / `AUTH_TOKEN_MAX_FAILURES_PER_IP` | `10` / `100` | failed logins per username + address / per address before 429 |
 | `AUTH_TOKEN_MAX_FAILURES_PER_USER` | `50` | failed logins per username from any address before 429 — slows guesses spread over many addresses; the price: anyone who knows a username can hold it at 429 for up to `AUTH_TOKEN_USER_FAILURE_WINDOW_S` |
 | `AUTH_TOKEN_USER_FAILURE_WINDOW_S` | `3600` | window of the per-username counter, from the first failure; a success does not clear it |
@@ -74,8 +85,9 @@ module. Tokens and `verify_api_key` are not affected by the mode.
 
 - **Shared cache — a hard requirement in production.** Permissions are cached per process-local version key, so with
   LocMem a revoke or role change reaches only the process that made it; a revoked grant keeps working in the other
-  workers until the cache timeout. LocMem or Dummy as the default cache with `DEBUG=False` raises
-  `django_access.W002` — treat it as a deploy blocker.
+  workers until the cache timeout, and every worker counts failed logins on its own, so the login limits multiply by
+  the worker count. LocMem or Dummy as the default cache is the Error `django_access.E012` under `check --deploy` (any
+  `DEBUG`), which stops the deploy; a plain `check` with `DEBUG=False` warns `django_access.W002`.
 - **Proxy depth.** Audit IPs and every per-IP throttle use DRF's `NUM_PROXIES`. On Volkanos set the service setting
   `DRF_NUM_PROXIES` to the real proxy depth — `1` behind Cloudflare → Caddy → nginx; other hosts set
   `REST_FRAMEWORK["NUM_PROXIES"]`. Unset, the client address is `REMOTE_ADDR`, and a client-chosen
@@ -88,7 +100,7 @@ module. Tokens and `verify_api_key` are not affected by the mode.
 
 ```
 manage.py access_routes --unmapped                 # exit 1 → stop, or deploy in observe (upgrade.md)
-manage.py check --deploy --fail-level ERROR        # E011: enforce over unmapped admin routes
+manage.py check --deploy --fail-level ERROR        # E011: enforce over unmapped admin routes; E012: per-process cache
 manage.py migrate                                  # 0001–0004; post_migrate imports the legacy keys
 manage.py access_import_legacy_keys --check        # exit 1 → stop: a key is not imported or mixed
 # only now: traffic to the new release
@@ -100,7 +112,7 @@ caller. Fix a `mixed` secret by rotation (`operations.md`) before the deploy goe
 
 After the upgrade migration `0002` every active non-superuser staff user holds **Manager**. Access management and
 token issuing stay with superusers until someone is granted Administrator — the `grant.migrate` rows in the audit list
-who got what. The Django admin site stays with superusers whatever the grants (D32).
+who got what. The Django admin site stays with superusers whatever the grants.
 
 ## Rollback
 

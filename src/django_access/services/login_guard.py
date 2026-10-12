@@ -1,7 +1,8 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""A failed-login counter for every password login of the service (``api/token/``, the customer token route).
+"""A failed-login counter for every password login of the service (``api/token/``, the customer token route, the
+Django admin form through ``guarded_admin_login``).
 
 Only failed attempts count, per username + address, per address and per username from any address; a success clears
 the first counter and is never counted. The address is DRF's ``get_ident`` (``NUM_PROXIES``). Cache keys carry hashes
@@ -11,14 +12,20 @@ only — no username or address is stored. Settings: ``AUTH_TOKEN_FAILURE_WINDOW
 slows guesses spread over many addresses; its price: anyone who knows a username can hold it at 429 for up to its window.
 """
 
+import functools
 import hashlib
-from collections.abc import Mapping
+import math
+import unicodedata
+from collections.abc import Callable, Mapping
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.http import HttpResponse
 from rest_framework.exceptions import Throttled
 from rest_framework.throttling import BaseThrottle
+
+ADMIN_LOGIN_REFUSED = "Too many failed login attempts. Try again later."
 
 
 def failure_window_s() -> int:
@@ -86,3 +93,44 @@ def clear(request, username: str) -> None:
     """A successful login clears its username + address counter; the per-address and per-username ones run out with
     their windows."""
     cache.delete(failure_keys(request, username)[0])
+
+
+def _form_username(request) -> str:
+    """The username as the admin login form reads it (stripped, NFKC): a look-alike spelling hits the same counter."""
+    return unicodedata.normalize("NFKC", str(request.POST.get("username", "")).strip())
+
+
+def _refusal(exc: Throttled) -> HttpResponse:
+    headers = {"Retry-After": str(math.ceil(exc.wait))}
+    return HttpResponse(ADMIN_LOGIN_REFUSED, status=429, content_type="text/plain", headers=headers)
+
+
+def _count_form_attempt(request, username: str, response) -> None:
+    """The login form answers a wrong password by showing itself again (200) and a login by a redirect; anything
+    else (a failed CSRF check) never read the password. Only a login as ``username`` clears its counter: a backend
+    that signs somebody else in (a session or header credential) proved nothing about that account."""
+    if response.status_code == 200:
+        record_failure(request, username)
+    elif 300 <= response.status_code < 400 and request.user.get_username() == username:
+        clear(request, username)
+
+
+def guarded_admin_login(view: Callable) -> Callable:
+    """``AdminSite.login`` behind the counters of ``api/token/``: same keys, limits and windows, so a login blocked on
+    one is blocked on the other. A blocked POST answers 429 with ``Retry-After`` before the password is checked."""
+
+    @functools.wraps(view)
+    def guarded(request, *args, **kwargs):
+        if request.method != "POST":
+            return view(request, *args, **kwargs)
+        username = _form_username(request)
+        try:
+            refuse_when_blocked(request, username)
+        except Throttled as exc:
+            return _refusal(exc)
+        response = view(request, *args, **kwargs)
+        _count_form_attempt(request, username, response)
+        return response
+
+    guarded.admin_site = view.__self__  # the route map's mark of an admin-site view; a bound ``AdminSite.login`` only
+    return guarded

@@ -60,8 +60,9 @@ somebody revokes, rotates or expires it; the key modules never fall back to thei
   not from the legacy row). `--module django_checkout` narrows it, `--json PATH`
   writes the rows. `prefix…last_four` only (`legacy…` for a short secret).
 - **Expiry** — a team sets or clears one per token: `access_token expire <id> --at 2027-06-30` / `--clear`, or
-  `POST tokens/<id>/expiry/` (`api.md`). Any future date or none, for every token (D31). A past date is refused —
-  revoke instead. One `token.expiry` audit row each.
+  `POST tokens/<id>/expiry/` (`api.md`). Any future date or none, for every live token. A past date is refused —
+  revoke instead. A token that is already expired or revoked is refused too: an expiry never revives it, issue a new
+  token. One `token.expiry` audit row each.
 - **Move a caller off a legacy key** — issue a new token with the same scope and pin, switch the caller, revoke the
   legacy token (`access_token revoke <id>`).
 
@@ -86,7 +87,7 @@ backups taken before it still hold the plaintext — expire them on the backup s
 
 - **Rotate** (`tokens/<id>/rotate/`, `access_token rotate`): a successor with the same application, scopes and pin;
   the old token stays valid for `overlap_hours` (default 24, 0–8760 from the API and the CLI). The successor gets the given `expires_at`
-  or none — no inherited or capped lifetime (D31).
+  or none — no inherited or capped lifetime.
 - **When to rotate**: no token is forced to expire. Every token shows `age_days` and `rotation_due` (active and at
   least `ACCESS_TOKEN_ROTATION_DAYS`, default 365, old) in the API, `access_token list` (`age=<n>d`, `rotation due`)
   and `access_legacy_report`; the CMS reads the rule from the catalogue's `token_rotation_days`. Nothing is refused,

@@ -49,7 +49,8 @@ to an unknown group or to anyone but an active staff user → 400 (the message n
 grant → 409.
 
 Staff create (`access_staff_create`): an active staff account, never a superuser, with the role granted (`staff.create`
-and `grant.create` audit rows, no password value in either). A username or e-mail taken by any user (any case) → 409;
+and `grant.create` audit rows, no password value in either). A username or e-mail taken by any user (any case) → 409 with one message
+for both, which names neither the field nor the account;
 an unknown role, an invalid username or e-mail (the user model's validators) or a password Django's
 `AUTH_PASSWORD_VALIDATORS` refuse → 400 on that field. The `staff_user_created(sender=<user model>, user, actor)`
 signal is sent inside the transaction: a receiver that raises rolls the account back (accounts adds the `Customer`
@@ -66,7 +67,7 @@ row the CMS login on `customer/tokens/` needs; without accounts the account sign
 | POST | `admin/applications/<id>/tokens/` | `scopes` (required), `name`, `channel_idx`, `expires_at` (aware, future, optional) | 201 token row + `raw` |
 | POST | `admin/tokens/<id>/rotate/` | `overlap_hours` (0–8760, default 24), `expires_at` (default none) | 201 successor + `raw`; revoked → 409 |
 | POST | `admin/tokens/<id>/revoke/` | — | 200; already revoked → 200, no second audit row |
-| POST | `admin/tokens/<id>/expiry/` | `expires_at` (aware datetime, or `null` to clear; required) | 200 token row; revoked → 409; audited `token.expiry` |
+| POST | `admin/tokens/<id>/expiry/` | `expires_at` (aware datetime, or `null` to clear; required) | 200 token row; revoked or already expired → 409; audited `token.expiry` |
 
 Token row: `id, name, prefix, last_four, scopes, channel_idx, expires_at, last_used_at, revoked_at, legacy,
 legacy_source, state, age_days, rotation_due` (`state`: `active` | `expired` | `revoked` | `application inactive` —
@@ -78,8 +79,9 @@ since issue or import; `rotation_due`: active and at least `token_rotation_days`
 ever carries `key_hash`.
 
 Token errors (400, v2 envelope): unknown or mixed scopes (`non_field_errors`); a past `expires_at`. No token needs an
-expiry and none has a maximum (D31). The expiry endpoint: a past date → `issue: EXPIRY_IN_PAST` on
-`field: expires_at`; every token takes any future date or `null`.
+expiry and none has a maximum. The expiry endpoint: a past date → `issue: EXPIRY_IN_PAST` on
+`field: expires_at`; every live token takes any future date or `null`. A revoked or expired token (the old token of
+a rotation after its cut-off included) answers 409 and stays dead: issue a new one.
 
 ## Errors
 

@@ -3,7 +3,8 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """System checks (tag ``entirius_config``): a broken access catalogue, gate mode or view area is caught at boot; a
 per-process cache and a gate that does not enforce in production warn; modules still on the access default rules are
-listed (Info). ``check --deploy`` also refuses an enforcing gate over unmapped admin routes (``E011``).
+listed (Info). ``check --deploy`` also refuses an enforcing gate over unmapped admin routes (``E011``) and a
+per-process default cache (``E012``).
 
 An area whose module is not installed is not an error — the default catalogue covers modules a deployment may not run.
 """
@@ -82,20 +83,36 @@ def _rule_errors(rule: RouteRule, known: set[str]) -> list[checks.Error]:
     return errors
 
 
+def _process_local_backend() -> str | None:
+    """The class name of the default cache when every process keeps its own copy."""
+    backend = settings.CACHES.get("default", {}).get("BACKEND", "")
+    return backend.rsplit(".", 1)[-1] if backend in PROCESS_LOCAL_CACHES else None
+
+
+def _per_process_cache(level: type[checks.CheckMessage], check_id: str, backend: str) -> checks.CheckMessage:
+    return level(
+        f"The default cache is {backend}: permission changes reach other processes only after the cache TIMEOUT, "
+        "and every process counts failed logins on its own",
+        hint="Use a shared cache (Redis) as the default cache.",
+        id=check_id,
+    )
+
+
 @checks.register("entirius_config")
 def permission_cache_is_shared(app_configs=None, **kwargs) -> list[checks.CheckMessage]:
     """The permission cache version must reach every process: a per-process default cache delays revocations."""
-    backend = settings.CACHES.get("default", {}).get("BACKEND", "")
-    if settings.DEBUG or backend not in PROCESS_LOCAL_CACHES:
+    backend = _process_local_backend()
+    if settings.DEBUG or backend is None:
         return []
-    return [
-        checks.Warning(
-            f"The default cache is {backend.rsplit('.', 1)[-1]}: permission changes reach other processes only after "
-            "the cache TIMEOUT",
-            hint="Use a shared cache (Redis) as the default cache.",
-            id="django_access.W002",
-        )
-    ]
+    return [_per_process_cache(checks.Warning, "django_access.W002", backend)]
+
+
+@checks.register("entirius_config", deploy=True)
+def deploy_cache_is_shared(app_configs=None, **kwargs) -> list[checks.CheckMessage]:
+    """``check --deploy``: a per-process default cache is refused, in any ``DEBUG`` — a revoked grant keeps working in
+    the other workers and the login limits multiply by the worker count."""
+    backend = _process_local_backend()
+    return [] if backend is None else [_per_process_cache(checks.Error, "django_access.E012", backend)]
 
 
 @checks.register("entirius_config")

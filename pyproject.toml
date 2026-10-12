@@ -2,7 +2,21 @@
 [project]
 name = "entirius-django-access"
 version = "0.1.0"
-description = "Staff roles and permissions per module area, an admin API gate, and hashed application tokens for the Volkanos platform"
+description = "Staff access module for Entirius: roles per module area, an admin API gate and hashed application tokens"
+keywords = ["django", "permissions", "roles", "api-tokens", "ecommerce", "entirius"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Django",
+    "Framework :: Django :: 5.2",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+]
 authors = [{ name = "Entirius" }]
 maintainers = [
     { name = "Piotr Brzozowski", email = "piotrb@entirius.com" },
@@ -27,7 +41,11 @@ dev  = ["ruff", "pre-commit"]
 test = ["pytest", "pytest-django", "psycopg[binary]>=3.1", "dj-database-url>=2.0"]
 
 [project.urls]
+Homepage = "https://docs.entirius.com/"
+Documentation = "https://github.com/entirius/entirius-django-access/tree/develop/docs"
 Repository = "https://github.com/entirius/entirius-django-access"
+Changelog = "https://github.com/entirius/entirius-django-access/blob/develop/CHANGELOG.md"
+Issues = "https://github.com/entirius/entirius-django-access/issues"
 
 [build-system]
 requires = ["hatchling"]

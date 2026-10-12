@@ -24,7 +24,7 @@ write implies read. A module can replace its own defaults with `AppConfig.access
 **Staff baseline** — every active staff user, no grant needed: `me`, `catalogue`, regional reference lists,
 contentdb self-permission reads, the notifications inbox, the Django admin login/logout/password pages.
 
-**Superusers only** — the rest of the Django admin site (pseudo-area `superuser.only`, D32). The CMS replaced it for
+**Superusers only** — the rest of the Django admin site (pseudo-area `superuser.only`). The CMS replaced it for
 clients: no role opens it, Administrator included (403 `ACCESS_DENIED`, description `superuser only`). Like the staff
 baseline it is never grantable, never in `me` and not a catalogue area.
 
@@ -48,11 +48,12 @@ active staff superuser or an Administrator holder. The whole transaction rolls b
 
 **Upgrade default.** Migration `0002` grants **Manager** to every active non-superuser staff user on first adoption
 (one `grant.migrate` audit row each). Nobody gets Administrator: until a superuser grants it, access management
-and token issuing stay with superusers. The Django admin site stays with superusers for good (D32).
+and token issuing stay with superusers. The Django admin site stays with superusers for good.
 
 Permissions are cached per user under a version that every access change, group membership change and
 `is_staff`/`is_superuser`/`is_active` change bumps. With a per-process cache (LocMem) other processes see a change
-only after the timeout — production needs a shared cache (`django_access.W002`).
+only after the timeout — production needs a shared cache (`django_access.W002`; an Error, `E012`, under
+`check --deploy`).
 
 ## The gate
 
@@ -91,7 +92,7 @@ have random values, only the legacy import puts one secret on several pinned row
 - **Scopes** (9): `checkout.storefront`, `contact_forms.submit`, `contact_forms.booking`, `agreements.subscribe`
   (publishable — they ship to browsers) and `checkout.erase`, `accounts.erase`, `returns.api`, `reviews.moderate`,
   `vault.api` (secret). One token never mixes the two groups.
-- **Lifetime** (D31): an expiry is optional for every scope and has no maximum; a past date is refused (revoke
+- **Lifetime**: an expiry is optional for every scope and has no maximum; a past date is refused (revoke
   instead). Every token shows its age (`age_days`) and `rotation_due` — active and at least
   `ACCESS_TOKEN_ROTATION_DAYS` (365) old. A recommendation only: nothing is refused, logged or audited for age.
 - **Channel pin**: a pinned token passes only where the route's channel equals the pin; a caller that passes no

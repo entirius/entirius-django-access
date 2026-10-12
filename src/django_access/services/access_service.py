@@ -35,6 +35,8 @@ _EDITABLE_ROLE_FIELDS = frozenset({"name", "description", "permissions"})
 # The only flags a created staff account gets — never read from a request.
 _STAFF_FLAGS = {"is_staff": True, "is_active": True, "is_superuser": False}
 GENERATED_PASSWORD_BYTES = 18
+# One answer for every collision: it names neither the field nor the kind of account that holds the value.
+STAFF_TAKEN = "The username or e-mail address is taken"
 
 
 @dataclass(frozen=True)
@@ -234,11 +236,9 @@ def _staff_role(key: str) -> Role:
 
 def _refuse_taken(data: StaffInput) -> None:
     """Username and e-mail are unique across every user, case-insensitively."""
-    users = get_user_model()._default_manager
-    if users.filter(**{f"{get_user_model().USERNAME_FIELD}__iexact": data.username}).exists():
-        raise AccessConflict("The username is taken")
-    if users.filter(email__iexact=data.email).exists():
-        raise AccessConflict("The e-mail address is taken")
+    taken = Q(**{f"{get_user_model().USERNAME_FIELD}__iexact": data.username}) | Q(email__iexact=data.email)
+    if get_user_model()._default_manager.filter(taken).exists():
+        raise AccessConflict(STAFF_TAKEN)
 
 
 def _checked_password(user, password: str) -> None:
@@ -256,7 +256,7 @@ def _new_staff(data: StaffInput, password: str):
     user.full_clean(exclude=["password"])
     _checked_password(user, password)
     user.set_password(password)
-    with unique_or_conflict("The username or e-mail address is taken"):
+    with unique_or_conflict(STAFF_TAKEN):
         user.save()
     return user
 
