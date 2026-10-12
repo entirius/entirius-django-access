@@ -5,7 +5,7 @@
 
 import dj_database_url
 
-SECRET_KEY = "not so secret test secret"  # noqa: S105 — test-only
+SECRET_KEY = "not so secret test secret, long enough for HS256"  # noqa: S105 — test-only
 DEBUG = True
 ALLOWED_HOSTS = ["*"]
 INSTALLED_APPS = [
@@ -18,13 +18,26 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "drf_spectacular",
     "django_access",
+    # Legacy key sources (plan 08): fake modules under the real app labels.
+    "tests.legacy_apps.accounts",
+    "tests.legacy_apps.checkout",
+    "tests.legacy_apps.contact_forms",
+    "tests.legacy_apps.returns",
+    "tests.legacy_apps.reviews",
+    "tests.legacy_apps.vault",
 ]
+# The service's order (without corsheaders / allauth), the gate appended.
 MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "django_access.middleware.AccessGateMiddleware",
 ]
+APPEND_SLASH = True  # Django's default, as in the service: path fuzzing relies on the redirect
 ROOT_URLCONF = "tests.urls"
 TEMPLATES = [
     {
@@ -48,3 +61,5 @@ DATABASES = {"default": dj_database_url.config(default="sqlite://:memory:")}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 USE_TZ = True
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+# sqlite cannot hold the token's NULLS NOT DISTINCT constraint; its tests skip there and run on PostgreSQL.
+SILENCED_SYSTEM_CHECKS = ["models.W047"]

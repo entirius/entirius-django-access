@@ -1,8 +1,22 @@
 
 [project]
 name = "entirius-django-access"
-version = "0.1.0"
-description = "Staff roles and permissions per module area, an admin API gate, and hashed application tokens for the Volkanos platform"
+version = "1.0.0"
+description = "Staff access module for Entirius: roles per module area, an admin API gate and hashed application tokens"
+keywords = ["django", "permissions", "roles", "api-tokens", "ecommerce", "entirius"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Django",
+    "Framework :: Django :: 5.2",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+]
 authors = [{ name = "Entirius" }]
 maintainers = [
     { name = "Piotr Brzozowski", email = "piotrb@entirius.com" },
@@ -14,8 +28,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "MPL-2.0"
 dependencies = [
-    "Django>=4.2",
-    "djangorestframework>=3.14",
+    "Django>=5.1",
+    "djangorestframework>=3.15.2",
     "djangorestframework-simplejwt>=5.3",
     "drf-spectacular>=0.27",
     "pydantic>=2.0",
@@ -27,7 +41,11 @@ dev  = ["ruff", "pre-commit"]
 test = ["pytest", "pytest-django", "psycopg[binary]>=3.1", "dj-database-url>=2.0"]
 
 [project.urls]
+Homepage = "https://docs.entirius.com/"
+Documentation = "https://github.com/entirius/entirius-django-access/tree/develop/docs"
 Repository = "https://github.com/entirius/entirius-django-access"
+Changelog = "https://github.com/entirius/entirius-django-access/blob/develop/CHANGELOG.md"
+Issues = "https://github.com/entirius/entirius-django-access/issues"
 
 [build-system]
 requires = ["hatchling"]
@@ -48,6 +66,7 @@ ignore = ["E501"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/**" = ["S101", "S105"]
+"tests/legacy_apps/**" = ["DJ008"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["django_access"]
@@ -59,6 +78,7 @@ quote-style = "double"
 DJANGO_SETTINGS_MODULE = "tests.settings"
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "-rs"  # name every skip: the local sqlite run skips the Postgres-only lockout race
 
 [tool.deptry]
 pep621_dev_dependency_groups = ["dev", "test"]

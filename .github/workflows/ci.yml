@@ -1,3 +1,4 @@
+# Lint (ruff, licence headers), tests on Postgres and a secret scan for every push to develop and every PR.
 name: CI
 
 on:

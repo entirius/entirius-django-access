@@ -1,0 +1,18 @@
+# ERD configuration for django-access — consumed by the ERD tooling (skill entirius-backend:erd-verify).
+app_label: django_access
+groups:
+  - name: roles
+    title: "Roles & Grants"
+    models:
+      - Role
+      - RolePermission
+      - Grant
+  - name: audit
+    title: "Audit"
+    models:
+      - AuditEntry
+  - name: tokens
+    title: "Applications & Tokens"
+    models:
+      - Application
+      - ApiToken
