@@ -245,6 +245,13 @@ paths:
           type: integer
         description: Actor user id.
       - in: query
+        name: fold_bypass
+        schema:
+          type: boolean
+        description: Fold `gate.bypass` entries into one row per actor and calendar
+          day of the service time zone; `count` and the pages then apply to the folded
+          rows. The other filters apply before folding.
+      - in: query
         name: from
         schema:
           type: string
@@ -1038,6 +1045,28 @@ components:
           - type: 'null'
           description: Client address by the NUM_PROXIES rule.
           title: Ip
+        folded:
+          default: 1
+          description: Entries the row stands for; 1 for an ordinary row. Present
+            only with `fold_bypass`.
+          title: Folded
+          type: integer
+        first_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          default: null
+          description: Oldest entry of the row. Present only with `fold_bypass`.
+          title: First At
+        last_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          default: null
+          description: Newest entry of the row. Present only with `fold_bypass`.
+          title: Last At
       required:
       - id
       - created_at

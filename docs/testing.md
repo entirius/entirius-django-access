@@ -29,6 +29,7 @@ names and key fields — the real modules are not installed here. The `legacy_ro
 | `test_route_map.py` / `test_route_map_scoping.py` | classification, owner-scoped rules, `self_auth` per branch, Django admin rules, the route audit |
 | `test_permissions.py` / `test_access_service.py` / `test_migration_0002.py` | effective permissions and cache versions (every user flag, membership, cascaded grants), every mutation with its audit row, service field whitelists, lockout guard, reserved `access.manage`, grant targets, 0002 → Manager and its 0001 round trip |
 | `test_gate.py` | the gate decision table, modes, bypass audit |
+| `test_audit_folding.py` | `fold_bypass`: one row per actor and day across raw pages, the time-zone midnight, filters before folding, two queries per page, the unchanged response without it |
 | `test_product_delete.py` | `pim.product_delete`: built-in roles, both PIM roots, the RealProduct merge, media/file/link deletes, `me`, the audit report |
 | `test_tokens.py` / `test_access_token_command.py` | issue, rotate, revoke, verify (the row of the channel for a shared hash), one token per hash and channel (PostgreSQL only), expiry rules, the CLI |
 | `test_login_guard.py` | failed-login counter: per username + address, per address, per username (any address, its own window), clear, hashed keys; the admin login form behind the same counters (`guarded_admin_login`) |
