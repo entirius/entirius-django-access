@@ -41,7 +41,14 @@ A superuser gets every area at its top level. A non-staff user gets `permissions
 | POST | `admin/staff/` | `username`, `email`, `role` (role key), optional `password`; nothing else (`is_superuser` → 400) | 201 the staff detail + `password`: the generated one (no `password` sent) in this response only, `Cache-Control: no-store`; null when one was given |
 | GET | `admin/staff/<user_id>/` | — | 200 + `groups`, `grants`; anything but an active staff user → 404 |
 | GET | `admin/groups/` | paging | 200 `{id, name, member_count, grants}` |
-| GET | `admin/audit/` | `action`, `actor`, `from`, `to`, paging (newest first) | 200 `{id, created_at, actor_id, actor_label, action, target_type, target_id, target_label, detail, ip}` |
+| GET | `admin/audit/` | `action`, `actor`, `from`, `to`, `fold_bypass`, paging (newest first) | 200 `{id, created_at, actor_id, actor_label, action, target_type, target_id, target_label, detail, ip}`; with `fold_bypass` also `folded`, `first_at`, `last_at` |
+
+`fold_bypass=true` folds the `gate.bypass` entries of one actor and one calendar day (the service time zone) into one
+row: the fields of the group's newest entry, `folded` (entries it stands for), `first_at` and `last_at` (oldest and
+newest entry), `detail` `{}`. `count` and the pages apply to the folded rows; `action`, `actor`, `from` and `to` apply
+before folding. Every other entry, and a group of one, is an ordinary row: `folded` 1, both bounds equal to
+`created_at`, its own `detail`. The entries behind a folded row: `action=gate.bypass`, `actor`, `from=<first_at>`,
+`to=<last_at>`. Without the parameter the rows carry none of the three fields.
 
 Role errors: a built-in role changed or deleted → 409; any `access.manage:*` key → 400 `ACCESS_MANAGE_RESERVED`;
 an unknown key → 400. A change that leaves no access manager → 409 and nothing changes. A grant of an unknown role,

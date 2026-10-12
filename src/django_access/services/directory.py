@@ -12,10 +12,11 @@ from datetime import datetime
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.db.models import Count, Prefetch, Q, QuerySet
+from django.db.models import BigIntegerField, Case, Count, F, Min, Prefetch, Q, QuerySet, Value, When, Window
+from django.db.models.functions import RowNumber, TruncDate
 
 from django_access.catalogue import registry
-from django_access.models import AuditEntry, Grant, Role
+from django_access.models import AuditAction, AuditEntry, Grant, Role
 from django_access.services import gate, permissions, tokens
 
 GRANT_RELATED = ("role", "user", "group")
@@ -140,6 +141,24 @@ def audit_entries(where: AuditFilter) -> QuerySet[AuditEntry]:
         "created_at__lte": where.until,
     }
     return AuditEntry.objects.filter(**{name: value for name, value in filters.items() if value is not None})
+
+
+def folded_audit_entries(where: AuditFilter) -> QuerySet[AuditEntry]:
+    """``audit_entries`` with the ``gate.bypass`` rows of one actor and one day (current time zone) folded into their
+    newest entry, newest first; every row carries ``folded`` (entries it stands for), ``first_at`` and ``last_at``.
+    Folding is one window pass in the database, so paging and the count see folded rows."""
+    own_group = Case(
+        When(action=AuditAction.GATE_BYPASS, then=Value(0)), default=F("id"), output_field=BigIntegerField()
+    )
+    group = [own_group, F("actor_id"), F("actor_label"), TruncDate("created_at")]
+    newest_first = [F("created_at").desc(), F("id").desc()]
+    rows = audit_entries(where).annotate(
+        folded=Window(Count("id"), partition_by=group),
+        first_at=Window(Min("created_at"), partition_by=group),
+        last_at=F("created_at"),
+        position=Window(RowNumber(), partition_by=group, order_by=newest_first),
+    )
+    return rows.filter(position=1).order_by(*newest_first)
 
 
 def me(user) -> dict:

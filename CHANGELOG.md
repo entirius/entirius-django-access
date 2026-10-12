@@ -160,6 +160,9 @@
   (migration `0005`, PostgreSQL 15+); `verify_api_key` takes the row of the route's channel, else the unpinned one.
 - `login_guard`: a per-username counter from any address, `AUTH_TOKEN_MAX_FAILURES_PER_USER` (50) per
   `AUTH_TOKEN_USER_FAILURE_WINDOW_S` (3600); `Throttled.wait` is the longest window that blocks.
+- `GET admin/audit/?fold_bypass=true`: `gate.bypass` entries folded in the database into one row per actor and
+  calendar day (service time zone) before paging, so `count` and the pages are those of the folded rows; rows carry
+  `folded`, `first_at`, `last_at`. Without the parameter the response is unchanged.
 
 ### Security
 
