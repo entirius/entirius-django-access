@@ -18,6 +18,10 @@ EXPIRY_DESCRIPTION = (
     "When the token stops working, or null for never; must be in the future. Optional for every scope and without a "
     "maximum: an old token is flagged `rotation_due` instead (`ACCESS_TOKEN_ROTATION_DAYS`)."
 )
+FOLD_BYPASS_DESCRIPTION = (
+    "Fold `gate.bypass` entries into one row per actor and calendar day of the service time zone; `count` and the "
+    "pages then apply to the folded rows. The other filters apply before folding."
+)
 
 
 def _check_permission_count(value: list[str] | None) -> list[str] | None:
@@ -109,6 +113,7 @@ class AuditListQuery(PageQuery):
     actor: int | None = Field(default=None, ge=1, description="Actor user id.")
     from_: AwareDatetime | None = Field(default=None, alias="from", description="Created at or after.")
     to: AwareDatetime | None = Field(default=None, description="Created at or before.")
+    fold_bypass: bool = Field(default=False, description=FOLD_BYPASS_DESCRIPTION)
 
 
 def _check_update_fields(request: BaseModel) -> None:

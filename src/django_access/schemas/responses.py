@@ -6,7 +6,9 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+FOLD_ONLY = "Present only with `fold_bypass`."
 
 
 class AreaResponse(BaseModel):
@@ -165,6 +167,16 @@ class AuditEntryResponse(BaseModel):
     target_label: str
     detail: dict[str, Any]
     ip: str | None = Field(description="Client address by the NUM_PROXIES rule.")
+    folded: int = Field(default=1, description=f"Entries the row stands for; 1 for an ordinary row. {FOLD_ONLY}")
+    first_at: datetime | None = Field(default=None, description=f"Oldest entry of the row. {FOLD_ONLY}")
+    last_at: datetime | None = Field(default=None, description=f"Newest entry of the row. {FOLD_ONLY}")
+
+    @model_validator(mode="after")
+    def _folded_row_has_no_detail(self) -> "AuditEntryResponse":
+        """A folded row stands for many requests: they are read with `action=gate.bypass` and the row's bounds."""
+        if self.folded > 1:
+            self.detail = {}
+        return self
 
 
 class AuditListResponse(BaseModel):

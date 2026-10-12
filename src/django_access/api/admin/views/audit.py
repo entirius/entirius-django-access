@@ -11,7 +11,7 @@ from rest_framework.response import Response
 
 from django_access.api.admin.views._base import ERROR_RESPONSES, PAGE_PARAMETERS, AdminView, parse
 from django_access.models import AuditEntry
-from django_access.schemas.requests import AuditListQuery
+from django_access.schemas.requests import FOLD_BYPASS_DESCRIPTION, AuditListQuery
 from django_access.schemas.responses import AuditEntryResponse, AuditListResponse
 from django_access.services import directory
 
@@ -20,10 +20,16 @@ _FILTERS = [
     OpenApiParameter("actor", int, description="Actor user id."),
     OpenApiParameter("from", datetime, description="Created at or after (ISO 8601 with offset)."),
     OpenApiParameter("to", datetime, description="Created at or before (ISO 8601 with offset)."),
+    OpenApiParameter("fold_bypass", bool, description=FOLD_BYPASS_DESCRIPTION),
 ]
+_FOLD_FIELDS = {"folded", "first_at", "last_at"}
 
 
 def dump(entry: AuditEntry) -> dict:
+    return AuditEntryResponse.model_validate(entry).model_dump(mode="json", exclude=_FOLD_FIELDS)
+
+
+def dump_folded(entry: AuditEntry) -> dict:
     return AuditEntryResponse.model_validate(entry).model_dump(mode="json")
 
 
@@ -38,4 +44,6 @@ class AuditListView(AdminView):
     def get(self, request: Request) -> Response:
         query = parse(AuditListQuery, request.query_params.dict())
         where = directory.AuditFilter(query.action, query.actor, query.from_, query.to)
+        if query.fold_bypass:
+            return self.paginated(request, directory.folded_audit_entries(where), dump_folded)
         return self.paginated(request, directory.audit_entries(where), dump)
