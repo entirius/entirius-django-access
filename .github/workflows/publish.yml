@@ -1,3 +1,4 @@
+# Builds the package and uploads it to PyPI through trusted publishing when a GitHub release is published.
 name: Publish
 
 on:
