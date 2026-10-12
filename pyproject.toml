@@ -1,7 +1,7 @@
 
 [project]
 name = "entirius-django-access"
-version = "0.1.0"
+version = "1.0.0"
 description = "Staff access module for Entirius: roles per module area, an admin API gate and hashed application tokens"
 keywords = ["django", "permissions", "roles", "api-tokens", "ecommerce", "entirius"]
 classifiers = [

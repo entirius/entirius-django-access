@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 — 2026-10-12
+
+First release.
 
 - Permission catalogue as code: 48 areas (read/write per module area), 9 application-token scopes, default route
   rules for the 25 modules that own admin routes (full `ResolverMatch.route` regex, first match wins, a catch-all per
@@ -177,7 +179,3 @@
   workers and the login limits multiply by the worker count.
 - Staff create answers a taken username and a taken e-mail address with one 409 message that names neither the field
   nor the account that holds the value (it said "The e-mail address is taken" for any user's address).
-
-## 0.1.0 (unreleased)
-
-- Scaffold from the Entirius module template.
