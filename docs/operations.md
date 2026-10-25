@@ -96,6 +96,27 @@ backups taken before it still hold the plaintext — expire them on the backup s
   cached.
 - **Deactivate an application** (`PATCH applications/<id>/ {"is_active": false}`): every token of it stops.
 
+## Integrations on admin routes
+
+```bash
+manage.py access_token create --application erp-bridge --create-application \
+    --scope pim.products:write --scope pim.schema:read --name "ERP bridge"
+```
+
+The value is printed once; the application's service user `access-app-<id>` appears with the first admin-scoped
+token. Give the integration the key, never a person's login: it calls `POST /api/access/v2/token/exchange/` with
+`X-API-KEY` and sends the `access` JWT as Bearer until it expires (`ACCESS_TOKEN_EXCHANGE_TTL_S`, 300 s).
+
+- **Narrow scopes.** Grant areas, not roles: read where it only reads, write where it writes, never
+  `pim.product_delete` unless it deletes SKUs. `access.manage` is refused. An integration that adds attribute values
+  takes `pim.attribute_values:write` once the installed PIM declares that area (`manage.py access_routes` shows which
+  area its `attributes/` routes need); until then it needs `pim.schema:write`.
+- **Revoke** the token or deactivate the application: the JWT stops on the next admin request (403
+  `TOKEN_INACTIVE`); the service user loses `is_staff` once no live admin token is left.
+- **Never** give the service user a password, superuser status, a group, a permission or a grant: `E013` flags the
+  first four (`migrate`, `check --database default`), the grant service refuses the last.
+- **Watch** `django_access.tokens` (`Token exchanged: token=<id> application=<id>`) and `last_used_at`.
+
 ## Lockout guard
 
 A role change, role delete or grant revoke that leaves no access manager (an active staff superuser or an
@@ -110,5 +131,6 @@ then revoke the old grant. A lost last manager is recovered with `createsuperuse
 | Admin route without an area | `UNMAPPED_ROUTE` 403 + error log; `access_routes --unmapped`; `check --deploy` (`E011`) |
 | Who still uses legacy keys | `access_legacy_report` |
 | Superuser writes | `gate.bypass` audit rows (status included) |
+| Key exchanges | logger `django_access.tokens`; 429s of `access_token_exchange*` |
 | Legacy import result | logger `django_access.legacy` after `migrate`; `--check` in the deploy |
 | Audit IPs | correct only with `NUM_PROXIES` set to the real proxy depth (`install.md` § Production hardening) |

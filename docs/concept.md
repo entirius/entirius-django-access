@@ -1,16 +1,17 @@
 ---
 title: Concept
-description: Areas, roles and grants, the admin gate, application tokens and legacy keys — what django-access decides and why.
+description: Areas, roles and grants, the admin gate, application tokens on key and admin routes, legacy keys — what django-access decides and why.
 ---
 
 django-access answers two questions for a Volkanos service: may this staff user call this admin route, and may this
 machine client call this key-protected route. The first is the **gate** (roles per module area); the second is the
-**application token** (`verify_api_key`). Neither replaces a module's own view checks — the gate refuses earlier, it
-never grants.
+**application token** (`verify_api_key`). An integration on admin routes sits between them: its key buys a short-lived
+JWT, and the gate decides that JWT by the key's admin scopes (§ Integrations on admin routes). Neither replaces a
+module's own view checks — the gate refuses earlier, it never grants.
 
 ## Areas and permissions
 
-The catalogue (`catalogue/`) is code, not data: 49 **areas** (`pim.products`, `checkout.orders`, …, `access.manage`,
+The catalogue (`catalogue/`) is code, not data: 50 **areas** (`pim.products`, `checkout.orders`, …, `access.manage`,
 `platform.devtools`), each offering `read` and usually `write`. A permission key is `<area>:read` or `<area>:write`;
 write implies read. A module can replace its own defaults with `AppConfig.access_areas`,
 `access_route_rules` and `access_token_scopes` — only for its own app label (`module-authors.md`).
@@ -20,6 +21,13 @@ write implies read. A module can replace its own defaults with `AppConfig.access
 `api/pim/admin/`, which removes the SKU from one channel) and the atlas and suppliers `realproducts/merge-by-ean/`
 (which deletes the losing SKU in every channel). Deleting a SKU's pictures, files, videos or links stays
 `pim.products:write`. Administrator and Manager hold it, Editor and Viewer do not; custom roles may.
+
+**Attribute values** (`pim.attribute_values`) are apart from the schema (`pim.schema`: features, feature sets,
+attribute groups, channels, link types, file categories): an integration that adds a new value — a new brand
+option — needs no right to change the schema. Every built-in role holds it at its `pim.schema` level; migration `0007`
+gave every custom role holding `pim.schema` the same level on it. The access defaults map the PIM `attributes/` routes
+there; a PIM release that declares its own areas (3.4.0 does) replaces those defaults, so on it the routes stay
+`pim.schema` until a PIM release declares `pim.attribute_values` and annotates its attribute views.
 
 **Staff baseline** — every active staff user, no grant needed: `me`, `catalogue`, regional reference lists,
 contentdb self-permission reads, the notifications inbox, the Django admin login/logout/password pages.
@@ -34,7 +42,7 @@ baseline it is never grantable, never in `me` and not a catalogue area.
 |---|---|
 | `administrator` | write on every area |
 | `manager` | write on every area except `access.manage` |
-| `editor` | write on `content.*`, `pim.products`, `pim.categories`, `pim.schema`, `pim.quality`, `faq.faq`, `email.templates`; read on the rest except `access.manage` |
+| `editor` | write on `content.*`, `pim.products`, `pim.categories`, `pim.schema`, `pim.attribute_values`, `pim.quality`, `faq.faq`, `email.templates`; read on the rest except `access.manage` |
 | `viewer` | read on every area except `access.manage` |
 
 Built-in roles are neither editable nor deletable; a new area joins them without a migration. Custom roles store
@@ -72,15 +80,21 @@ package), area and method; rules apply only to their own module's routes.
 | staff, Django admin page (`superuser.only`) | 403 `ACCESS_DENIED` (`superuser only`) — whatever the roles |
 | staff without the permission, or a write on a read-only area | 403 `ACCESS_DENIED` |
 | staff with the permission | passes |
+| exchanged JWT (claim `access_token_id`), token revoked, expired, its application inactive or not this user's | 403 `TOKEN_INACTIVE` — in every mode |
+| exchanged JWT, the token's admin scopes lack the permission, a write on the staff baseline, `superuser.only` | 403 `ACCESS_DENIED` — in every mode; an unmapped route stays 403 `UNMAPPED_ROUTE`; staff-baseline reads pass |
+| exchanged JWT with the permission | passes — never by role, never by the superuser bypass |
 
 GET/HEAD/OPTIONS read, everything else writes — except the catalogue overrides: POST-reads count as read, the GET PII
 exports and downloads count as write (a Viewer never exports PII), and the SKU-deleting routes need
 `pim.product_delete:write` instead of their route's area. The principal is what the view's own
 authenticators would see, from SimpleJWT `JWTAuthentication` and DRF `SessionAuthentication` only; a session never
-counts on a JWT-only view, and API-key headers never open an admin route.
+counts on a JWT-only view, and API-key headers never open an admin route — a key reaches one only through the
+exchanged JWT.
 
 `ACCESS_GATE_MODE`: `enforce` (default), `observe` (log refusals on `django_access.gate`, let everything through),
-`off`. Any other value is enforced and fails the system check `E010`.
+`off`. Any other value is enforced and fails the system check `E010`. The mode applies to people: an exchanged JWT is
+decided and refused in every mode, since nothing else limits it to its key's scopes (in `off` the gate checks each
+Bearer JWT's signature for the claim and decides only those requests).
 
 ## Application tokens
 
@@ -92,6 +106,9 @@ have random values, only the legacy import puts one secret on several pinned row
 - **Scopes** (9): `checkout.storefront`, `contact_forms.submit`, `contact_forms.booking`, `agreements.subscribe`
   (publishable — they ship to browsers) and `checkout.erase`, `accounts.erase`, `returns.api`, `reviews.moderate`,
   `vault.api` (secret). One token never mixes the two groups.
+- **Admin scopes**: any staff permission key `<area>:read|write` of the catalogue except `access.manage` (a machine
+  never manages access). They are secret, a token holding one is never pinned to a channel, and they open nothing by
+  themselves — only through the exchange below. A token may hold admin and secret key-route scopes together.
 - **Lifetime**: an expiry is optional for every scope and has no maximum; a past date is refused (revoke
   instead). Every token shows its age (`age_days`) and `rotation_due` — active and at least
   `ACCESS_TOKEN_ROTATION_DAYS` (365) old. A recommendation only: nothing is refused, logged or audited for age.
@@ -104,6 +121,29 @@ have random values, only the legacy import puts one secret on several pinned row
   wrong scope and channel mismatch. Revocation applies on the next request.
 - Rotation issues a successor (no expiry unless one is given) and keeps the old token valid for an overlap
   (default 24 h).
+
+## Integrations on admin routes
+
+Every module's admin views authenticate a SimpleJWT and demand `is_staff`, so an integration needs a staff JWT — never
+a person's password. The key buys one:
+
+1. **Service user.** The first live admin-scoped token of an application creates its service user
+   (`Application.service_user`): username `access-app-<application id>`, unusable password, never a superuser, no
+   grants (the grant service refuses it), left out of the staff list. It is `is_staff` while the application is active
+   and holds a live admin-scoped token; every token and application change recomputes it (a token that expires by
+   time leaves the flag until the next change — the exchange and the gate check each token themselves). Applications are never
+   deleted, so the row stays for the modules' `request.user` foreign keys. `django_access.E013` (a `database` check:
+   `migrate`, `check --database default`) flags a service user that is a superuser, has a usable password, a group or a
+   user permission.
+2. **Exchange.** `POST api/access/v2/token/exchange/` with the key in `X-API-KEY` returns a SimpleJWT access token of
+   the service user (no refresh token) with the claim `access_token_id`, valid `ACCESS_TOKEN_EXCHANGE_TTL_S` (300 s).
+   One 401 for every refusal; throttled per key and per address; `last_used_at` as for any key use; no audit row.
+3. **Gate.** On an admin route the JWT's token decides: live, its application's service user, and an admin scope that
+   implies the route's permission (write implies read). Of the staff baseline a token only reads. Revoking the key
+   stops its JWT on the next admin request.
+
+Outside the admin set the gate does nothing, by design: until it expires, the JWT works on non-admin JWT routes as
+the service user, a staff account without a customer profile — the reason the lifetime is short.
 
 ## Legacy keys
 

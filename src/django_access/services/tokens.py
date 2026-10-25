@@ -10,6 +10,7 @@ failure. Neither the raw value nor ``key_hash`` is ever logged or written to an 
 """
 
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta
 from typing import Any
@@ -18,11 +19,16 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import F, Q
 from django.utils import timezone
+from rest_framework_simplejwt.tokens import AccessToken
 
 from django_access.catalogue import registry
-from django_access.exceptions import AccessConflict, TokenExpiryError
+from django_access.catalogue.areas import ACCESS_MANAGE
+from django_access.exceptions import AccessConflict, InvalidApiKey, TokenExpiryError
 from django_access.models import ApiToken, Application, AuditAction
 from django_access.services.access_service import Actor, record_audit, unique_or_conflict
+from django_access.services.service_users import admin_scopes, sync_service_user
+
+logger = logging.getLogger("django_access.tokens")
 
 TOKEN_PREFIX = "ent_api_"  # noqa: S105 — the public marker of every raw value
 MAX_PRESENTED_LENGTH = 256
@@ -30,6 +36,7 @@ KEY_HEADERS = ("HTTP_X_API_KEY", "HTTP_X_API_ADMIN_KEY")
 ACTIVE, REVOKED, EXPIRED, INACTIVE = "active", "revoked", "expired", "application inactive"
 _EDITABLE_APPLICATION_FIELDS = frozenset({"name", "description", "is_active"})
 MAX_OVERLAP_HOURS = 365 * 24
+EXCHANGE_CLAIM = "access_token_id"  # the JWT claim naming the token an exchanged JWT came from
 
 
 def hash_key(raw: str) -> str:
@@ -54,16 +61,29 @@ def is_secret(scopes: list[str]) -> bool:
     return not all(publishable.get(key, False) for key in scopes)
 
 
+def _refuse_access_manage(scopes: list[str]) -> None:
+    if reserved := sorted({key for key in scopes if key.rpartition(":")[0] == ACCESS_MANAGE}):
+        raise ValueError(f"A token never manages access: {reserved}")
+
+
 def _validated_scopes(scopes: list[str]) -> list[str]:
-    """Deduplicated, sorted catalogue keys of one group; ``ValueError`` when empty, unknown or mixed."""
-    publishable = _publishable()
+    """Deduplicated, sorted keys of one group — key-route scopes or admin scopes (secret); ``ValueError`` when empty,
+    unknown, ``access.manage`` or mixed."""
     if not scopes:
         raise ValueError("A token needs at least one scope")
+    _refuse_access_manage(scopes)
+    publishable = {**_publishable(), **dict.fromkeys(admin_scopes(scopes), False)}
     if unknown := set(scopes) - publishable.keys():
         raise ValueError(f"Unknown token scopes: {sorted(unknown)}")
     if len({publishable[key] for key in scopes}) > 1:
         raise ValueError("Publishable and secret scopes cannot share a token")
     return sorted(set(scopes))
+
+
+def _check_pin(scopes: list[str], channel_idx: str | None) -> None:
+    """The gate checks no channel on admin routes, so an admin-scoped token is never pinned."""
+    if channel_idx is not None and admin_scopes(scopes):
+        raise ValueError("A token with admin scopes cannot be pinned to a channel")
 
 
 def _check_expiry(expires_at: datetime | None, now: datetime) -> None:
@@ -119,8 +139,9 @@ def update_application(application: Application, updates: dict[str, Any], *, act
     for key, value in updates.items():
         setattr(application, key, value)
     with unique_or_conflict(message):
-        application.save()
+        application.save(update_fields=list(updates))  # never the service-user link of a stale instance
     changed = {key: change for key, change in changes.items() if change["from"] != change["to"]}
+    sync_service_user(application)
     record_audit(AuditAction.APPLICATION_UPDATE, actor, application, {"name": application.name, "changes": changed})
     return application
 
@@ -137,10 +158,12 @@ def issue_token(
 ) -> tuple[ApiToken, str]:
     """A new token and its raw value — the only time the raw value exists."""
     scopes = _validated_scopes(scopes)
+    _check_pin(scopes, channel_idx)
     _check_expiry(expires_at, timezone.now())
     token, raw = _create(
         actor, application=application, name=name, scopes=scopes, channel_idx=channel_idx, expires_at=expires_at
     )
+    sync_service_user(application)
     record_audit(AuditAction.TOKEN_CREATE, actor, token, token_detail(token))
     return token, raw
 
@@ -173,6 +196,7 @@ def rotate_token(
     _check_expiry(expires_at, now)
     _shorten(token, now, overlap_hours)
     successor, raw = _create(actor, **_copied(token), scopes=scopes, expires_at=expires_at)
+    sync_service_user(token.application)
     replaced = {"replaces": token.pk, "replaces_expires_at": token.expires_at.isoformat()}
     record_audit(AuditAction.TOKEN_ROTATE, actor, successor, {**token_detail(successor), **replaced})
     return successor, raw
@@ -186,6 +210,7 @@ def revoke_token(token: ApiToken, *, actor: Actor) -> ApiToken:
     token.revoked_at = timezone.now()
     token.revoked_by = actor.user
     token.save(update_fields=["revoked_at", "revoked_by"])
+    sync_service_user(token.application)
     record_audit(AuditAction.TOKEN_REVOKE, actor, token, token_detail(token))
     return token
 
@@ -206,6 +231,7 @@ def set_token_expiry(token: ApiToken, *, expires_at: datetime | None, actor: Act
     change = {"token_id": token.pk, "legacy": token.legacy, "from": _iso(token.expires_at), "to": _iso(expires_at)}
     token.expires_at = expires_at
     token.save(update_fields=["expires_at"])
+    sync_service_user(token.application)
     record_audit(AuditAction.TOKEN_EXPIRY, actor, token, change)
     return token
 
@@ -242,7 +268,7 @@ def _allows(token: ApiToken, scope: str, channel_idx: str | None) -> bool:
     return scope in token.scopes and pin_holds
 
 
-def _presented(request) -> str | None:
+def presented_key(request) -> str | None:
     """``X-API-KEY``, else ``X-API-ADMIN-KEY``; an empty or over-long value counts as none."""
     value = next((request.META[header] for header in KEY_HEADERS if request.META.get(header)), None)
     return value if value and len(value) <= MAX_PRESENTED_LENGTH else None
@@ -274,7 +300,7 @@ def verify_api_key(request, scope: str, channel_idx: str | None = None) -> ApiTo
     """The token presented by ``request`` when it may use ``scope`` on ``channel_idx``, else ``None`` (any reason).
 
     ``channel_idx=None`` (a route without a channel) accepts unpinned tokens only: a pinned token is refused there."""
-    presented = _presented(request)
+    presented = presented_key(request)
     if presented is None:
         return None
     token = _candidate(presented, scope, channel_idx)
@@ -284,3 +310,38 @@ def verify_api_key(request, scope: str, channel_idx: str | None = None) -> ApiTo
     _touch(token, now)
     request.access_token = token
     return token
+
+
+def exchange_ttl() -> timedelta:
+    """``ACCESS_TOKEN_EXCHANGE_TTL_S``: the lifetime of an exchanged JWT (300 s)."""
+    return timedelta(seconds=getattr(settings, "ACCESS_TOKEN_EXCHANGE_TTL_S", 300))
+
+
+def _exchangeable(presented: str | None, now: datetime) -> ApiToken:
+    """The unpinned, active token of the key with an admin scope and a staff service user; ``InvalidApiKey`` else."""
+    if presented is None:
+        raise InvalidApiKey
+    rows = ApiToken.objects.select_related("application__service_user")
+    token = rows.filter(key_hash=hash_key(presented), channel_idx__isnull=True).first()
+    if token is None or token_state(token, now) != ACTIVE or not admin_scopes(token.scopes):
+        raise InvalidApiKey
+    user = token.application.service_user
+    if user is None or not (user.is_active and user.is_staff) or user.is_superuser:
+        raise InvalidApiKey
+    return token
+
+
+def exchange(request) -> tuple[ApiToken, AccessToken]:
+    """Trade the presented key for a short-lived SimpleJWT access token of its application's service user.
+
+    The JWT carries ``access_token_id``: the gate decides every admin request by that token's scopes and state. No
+    refresh token, no audit row (issue, rotate and revoke have theirs); ``last_used_at`` as for any key use.
+    """
+    now = timezone.now()
+    token = _exchangeable(presented_key(request), now)
+    jwt = AccessToken.for_user(token.application.service_user)
+    jwt.set_exp(from_time=now, lifetime=exchange_ttl())
+    jwt[EXCHANGE_CLAIM] = token.pk
+    _touch(token, now)
+    logger.info("Token exchanged: token=%s application=%s", token.pk, token.application_id)
+    return token, jwt

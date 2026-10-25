@@ -5,6 +5,7 @@
 
 Append it after the authentication middleware. ``process_view`` runs only after a successful resolve, so an unknown
 path stays a 404. ``ACCESS_GATE_MODE`` = ``enforce`` (default) | ``observe`` (log refusals, let through) | ``off``.
+A JWT bought with an application key is decided and refused in every mode, ``observe`` and ``off`` included.
 """
 
 import logging
@@ -29,21 +30,32 @@ class AccessGateMiddleware:
 
     def process_view(self, request: HttpRequest, view_func, view_args, view_kwargs) -> HttpResponse | None:
         current = gate.mode()
-        if current == gate.OFF:
+        if current == gate.OFF and not gate.presents_exchanged_token(request, view_func):
             return None
         try:
             decision = gate.decide(request, view_func)
         except Exception:
             debug_id = gate.new_debug_id()
             logger.exception("Gate decision failed [%s]", debug_id)
-            return None if current == gate.OBSERVE else gate.internal_error(debug_id)
+            return gate.internal_error(debug_id) if self._fail_closed(request, current) else None
         request._access_decision = decision
-        if decision.allow:
+        if decision.allow or (current == gate.OFF and not decision.token):
             return None
-        if current == gate.OBSERVE:
+        if current == gate.OBSERVE and not decision.token:
             gate.log_refusal(request, decision)
             return None
         return gate.refusal(decision)
+
+    @staticmethod
+    def _fail_closed(request: HttpRequest, current: str) -> bool:
+        """A failed decision refuses in ``enforce``, and in every mode for an exchanged JWT — also when the gate failed
+        before it read the claim."""
+        if current == gate.ENFORCE or gate.exchanged(request):
+            return True
+        try:
+            return gate.presents_exchanged_token(request)
+        except Exception:  # the check itself failed: refuse rather than guess
+            return True
 
     @staticmethod
     def _record_bypass(request: HttpRequest, decision: gate.Decision, status: int) -> None:

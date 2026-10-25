@@ -36,7 +36,10 @@ names and key fields — the real modules are not installed here. The `legacy_ro
 | `test_token_rotation.py` | `age_days` / `rotation_due` in the service, API, CLI and legacy report; `token_rotation_days` in the catalogue |
 | `test_admin_api.py` / `test_me_api.py` / `test_token_api.py` | every endpoint: auth matrix, bodies, conflicts, whitelists |
 | `test_staff_create.py` | `POST admin/staff/`: account shape, role and audit, the generated password once, refusals, the signal rollback, no password in audit or logs |
-| `test_openapi.py` | `spectacular --validate --fail-on-warn`, the `ApiKeyAuth` hook |
+| `test_admin_scopes.py` / `test_service_users.py` | admin scopes on tokens (catalogue keys, `access.manage`, mixing, no pin, CLI); the service user per application: creation, `is_staff` per mutation, grant refusal, staff list, `E013` |
+| `test_exchange.py` / `test_gate_tokens.py` (`token_gate_urls.py`) | the key exchange (body, claim, lifetime, one 401, throttles, last-used, logs); the gate on an exchanged JWT: scopes × routes × every mode, dead tokens at once, foreign claims, no superuser bypass |
+| `test_attribute_values_area.py` (`attribute_values_urls.py`) | `pim.attribute_values`: routes on both PIM roots, schema neighbours, built-in roles, migration `0007` |
+| `test_openapi.py` | `spectacular --validate --fail-on-warn`, the `ApiKeyAuth` hook (key routes and the exchange) |
 | `test_legacy.py` | every legacy source without expiry, idempotency, shared secrets (one pinned token per channel, an older unpinned token `stale`, purge per channel), null-channel skip, the agreements setting, a failing source, dry run, the `post_migrate` receiver, the command |
 
 Shared helpers (`bearer`, `bypass_rows`, the token API endpoints, the measured query count) live in
