@@ -107,7 +107,8 @@ refresh token: exchange again before it expires. The key needs an admin scope (`
 | 429 | above `access_token_exchange` (per key, default `30/min`) or `access_token_exchange_address` (per address, default `120/min`) |
 
 With the JWT on an admin route: 403 `TOKEN_INACTIVE` once its token is revoked, expired or its application inactive;
-403 `ACCESS_DENIED` (`needs <area>:<level>`) for a permission outside the token's scopes.
+403 `ACCESS_DENIED` (`needs <area>:<level>`) for a permission outside the token's scopes and for a write on a
+staff-baseline route. The 401 carries `WWW-Authenticate: ApiKey realm="api", header="X-API-KEY"`.
 
 ## Errors
 

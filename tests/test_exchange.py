@@ -35,7 +35,7 @@ def test_exchange_returns_a_short_lived_jwt_of_the_service_user(client, issue, a
     assert (body["token_type"], body["expires_in"]) == ("Bearer", 300)
     jwt = AccessToken(body["access"])
     application.refresh_from_db()
-    assert jwt["user_id"] == str(application.service_user_id) or jwt["user_id"] == application.service_user_id
+    assert jwt["user_id"] == str(application.service_user_id)
     assert jwt[tokens.EXCHANGE_CLAIM] == token.pk
     assert 290 <= jwt["exp"] - jwt["iat"] <= 300
 
@@ -88,7 +88,9 @@ def test_every_refusal_is_the_same_401(client, issue, application, system, clock
         clock.advance(hours=2)
     elif cause == "inactive":
         tokens.update_application(application, {"is_active": False}, actor=system)
-    assert refusal(exchange(client, raw)) == EXPECTED_401
+    response = exchange(client, raw)
+    assert response["WWW-Authenticate"] == 'ApiKey realm="api", header="X-API-KEY"'
+    assert refusal(response) == EXPECTED_401
 
 
 def test_a_superuser_service_account_is_refused(client, issue, application):
@@ -131,7 +133,7 @@ def throttled():
 def test_exchange_is_throttled_per_key(client, issue, throttled, monkeypatch):
     from django_access.api import exchange as view_module
 
-    monkeypatch.setattr(view_module.KeyThrottle, "rate", "2/min")
+    monkeypatch.setattr(view_module.KeyThrottle, "default_rate", "2/min")
     _, raw = issue(ADMIN)
     _, other = issue(ADMIN)
     assert [exchange(client, raw).status_code for _ in range(3)] == [200, 200, 429]
@@ -141,13 +143,33 @@ def test_exchange_is_throttled_per_key(client, issue, throttled, monkeypatch):
 def test_exchange_is_throttled_per_address(client, throttled, monkeypatch):
     from django_access.api import exchange as view_module
 
-    monkeypatch.setattr(view_module.AddressThrottle, "rate", "2/min")
+    monkeypatch.setattr(view_module.AddressThrottle, "default_rate", "2/min")
     codes = [exchange(client, f"ent_api_unknown{n}").status_code for n in range(3)]
     assert codes == [401, 401, 429]
 
 
-@override_settings(REST_FRAMEWORK={"DEFAULT_THROTTLE_RATES": {"access_token_exchange": "nonsense"}})
-def test_a_malformed_rate_falls_back_to_the_class_rate():
-    from django_access.api.exchange import KeyThrottle
+def test_a_key_less_flood_hits_the_address_throttle(client, throttled, monkeypatch):
+    from django_access.api import exchange as view_module
 
-    assert KeyThrottle().get_rate() == "30/min"
+    monkeypatch.setattr(view_module.AddressThrottle, "default_rate", "2/min")
+    assert [exchange(client, None).status_code for _ in range(3)] == [401, 401, 429]
+
+
+def test_the_setting_overrides_the_default_rate(client, issue, throttled, monkeypatch):
+    from django_access.api import exchange as view_module
+
+    rates = {"access_token_exchange": "1/min", "access_token_exchange_address": "100/min"}
+    monkeypatch.setattr(view_module.KeyThrottle, "THROTTLE_RATES", rates)
+    _, raw = issue(ADMIN)
+    assert [exchange(client, raw).status_code for _ in range(2)] == [200, 429]
+
+
+@pytest.mark.parametrize("configured", ["missing", "nonsense", None])
+@pytest.mark.parametrize(("name", "default"), [("KeyThrottle", "30/min"), ("AddressThrottle", "120/min")])
+def test_a_missing_or_malformed_rate_falls_back_to_the_default(monkeypatch, configured, name, default):
+    from django_access.api import exchange as view_module
+
+    throttle = getattr(view_module, name)
+    rates = {} if configured == "missing" else {throttle.scope: configured}
+    monkeypatch.setattr(throttle, "THROTTLE_RATES", rates)
+    assert throttle().get_rate() == default

@@ -3,11 +3,14 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """The gate on an exchanged JWT: the token's scopes decide, its state applies at once, and every mode enforces it."""
 
+from datetime import timedelta
+
 import pytest
 from django.test import override_settings
 from rest_framework_simplejwt.tokens import AccessToken
 
-from django_access.services import tokens
+from django_access.models import Application
+from django_access.services import gate, tokens
 from tests import gate_urls
 from tests import token_gate_urls as urls
 from tests.helpers import bearer
@@ -29,11 +32,6 @@ def jwt_of(client):
     return make
 
 
-def issue_of(issue, scopes):
-    token, raw = issue(scopes)
-    return token, raw
-
-
 def issue_code(response) -> str | None:
     details = response.json().get("details") or [{}]
     return details[0].get("issue")
@@ -52,6 +50,7 @@ def issue_code(response) -> str | None:
         (["pim.products:write"], "delete", urls.PRODUCT_DELETE, 403),
         (["pim.products:write", "pim.product_delete:write"], "delete", urls.PRODUCT_DELETE, 200),
         (["pim.products:read"], "get", gate_urls.BASELINE, 200),
+        (["pim.products:write"], "post", gate_urls.BASELINE, 403),
         (["pim.products:read"], "get", gate_urls.UNMAPPED, 403),
         (["pim.products:read"], "get", "/admin/", 403),
     ],
@@ -72,9 +71,9 @@ def test_refusal_names_the_permission(client, issue, jwt_of):
 
 
 @pytest.mark.parametrize("mode", MODES)
-@pytest.mark.parametrize("change", ["revoke", "deactivate", "expire"])
-def test_a_dead_token_stops_its_live_jwt_at_once(client, issue, application, system, jwt_of, mode, change):
-    token, raw = issue(["pim.products:read"])
+@pytest.mark.parametrize("change", ["revoke", "deactivate", "rotate", "expire"])
+def test_a_dead_token_stops_its_live_jwt_at_once(client, issue, application, system, jwt_of, clock, mode, change):
+    token, raw = issue(["pim.products:read"], expires_at=clock.now + timedelta(hours=1))
     issue(["pim.products:read"])  # a second live token keeps the service account staff
     headers = jwt_of(raw)
     assert client.get(urls.PRODUCTS, **headers).status_code == 200
@@ -82,8 +81,10 @@ def test_a_dead_token_stops_its_live_jwt_at_once(client, issue, application, sys
         tokens.revoke_token(token, actor=system)
     elif change == "deactivate":
         tokens.update_application(application, {"is_active": False}, actor=system)
-    else:
+    elif change == "rotate":
         tokens.rotate_token(token, actor=system, overlap_hours=0)
+    else:
+        clock.advance(hours=2)
     with override_settings(ACCESS_GATE_MODE=mode):
         response = client.get(urls.PRODUCTS, **headers)
     assert response.status_code == 403
@@ -104,13 +105,52 @@ def forged(user, token_id) -> dict:
     return {"HTTP_AUTHORIZATION": f"Bearer {jwt}"}
 
 
-@pytest.mark.parametrize("claim", ["other_users_token", "missing_token", "not_an_int"])
-def test_a_claim_that_does_not_belong_to_the_user_is_refused(client, issue, person, claim):
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("claim", ["other_users_token", "missing_token", "not_an_int", "true", "zero", "null"])
+def test_a_claim_that_does_not_belong_to_the_user_is_refused(client, issue, person, mode, claim):
     token, _ = issue(["pim.products:read"])
     user = person("superuser")
-    token_id = {"other_users_token": token.pk, "missing_token": 999_999, "not_an_int": "1"}[claim]
-    response = client.get(urls.PRODUCTS, **forged(user, token_id))
+    values = {"other_users_token": token.pk, "missing_token": 999_999, "not_an_int": "1", "true": True, "zero": 0}
+    with override_settings(ACCESS_GATE_MODE=mode):
+        response = client.get(urls.PRODUCTS, **forged(user, values.get(claim)))
     assert (response.status_code, issue_code(response)) == (403, "TOKEN_INACTIVE")
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_another_applications_token_id_is_refused(client, issue, mode):
+    token_a, _ = issue(["pim.products:write"])
+    other = Application.objects.create(name="other")
+    issue(["pim.products:read"], application=other)
+    other.refresh_from_db()
+    with override_settings(ACCESS_GATE_MODE=mode):
+        response = client.get(urls.PRODUCTS, **forged(other.service_user, token_a.pk))
+    assert (response.status_code, issue_code(response)) == (403, "TOKEN_INACTIVE")
+
+
+def test_an_expired_jwt_is_not_authenticated(client, issue, application):
+    token, _ = issue(["pim.products:read"])
+    application.refresh_from_db()
+    jwt = AccessToken.for_user(application.service_user)
+    jwt.set_exp(lifetime=timedelta(seconds=-1))
+    jwt[tokens.EXCHANGE_CLAIM] = token.pk
+    assert client.get(urls.PRODUCTS, HTTP_AUTHORIZATION=f"Bearer {jwt}").status_code == 401
+
+
+@pytest.mark.parametrize("mode", ["observe", "off"])
+@pytest.mark.parametrize("failing", ["_token_decision", "principal"])
+def test_a_failing_gate_refuses_an_exchanged_jwt_in_every_mode(
+    client, issue, jwt_of, person, monkeypatch, mode, failing
+):
+    _, raw = issue(["pim.products:read"])
+    exchanged, staff = jwt_of(raw), bearer(person("viewer"))
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("gate failure")
+
+    monkeypatch.setattr(gate, failing, broken)
+    with override_settings(ACCESS_GATE_MODE=mode):
+        assert client.get(urls.PRODUCTS, **exchanged).status_code == 500
+        assert client.get(urls.PRODUCTS, **staff).status_code == 200
 
 
 def test_the_superuser_bypass_never_applies_to_an_exchanged_jwt(client, issue, application, jwt_of):

@@ -50,15 +50,16 @@ src/django_access/
 │                 legacy (import, legacy_report, purge_legacy_sources)  directory (read queries of the API)
 │                 login_guard (failed-login counter of the service's password logins, admin login form wrapper)
 ├── schemas/      requests.py  responses.py (Pydantic, extra="forbid")
-├── api/          me.py  exchange.py (key → admin JWT)  permissions.py (IsStaffUser, HasAreaPermission)  admin/ (urls, views)
+├── api/          me.py  exchange.py (key → admin JWT)  permissions.py (IsStaffUser, HasAreaPermission)
+│                 admin/ (urls, thin views)
 └── management/commands/  access_routes  access_token  access_import_legacy_keys  access_legacy_report
                           access_purge_legacy_keys
 ```
 
 Flow: request → resolve → gate (admin set only: principal → role permissions, or the token of an exchanged JWT →
 allow / 401 / 403) → view. Integrations: key → `token/exchange/` → JWT of the application's service user → admin
-routes. Key routes: the module's own auth → `verify_api_key(request, scope, channel_idx)` → one lookup by hash (the row of the channel,
-else the unpinned one). `migrate` →
+routes. Key routes: the module's own auth → `verify_api_key(request, scope, channel_idx)` → one lookup by hash (the
+row of the channel, else the unpinned one). `migrate` →
 `post_migrate` → legacy import (no expiry; teams set one per token) → `access_import_legacy_keys --check` in the deploy
 → `access_legacy_report` shows who still uses them → `access_purge_legacy_keys --yes` on demand. Route areas: the
 view's `access_area` → the module's `AppConfig` rules → the access defaults.

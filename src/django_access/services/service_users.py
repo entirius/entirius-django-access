@@ -6,7 +6,9 @@
 One per application, created with its first admin-scoped token: username ``access-app-<pk>``, unusable password,
 never a superuser, no grants — its permissions are the scopes of the token it presents (``services.gate``). It is staff
 while the application is active and holds a live admin-scoped token; every token and application mutation recomputes
-that in its own transaction. It stays active, so a JWT of a dead token reaches the gate and gets ``TOKEN_INACTIVE``.
+that in its own transaction, under a lock on the application row. A token that expires by time leaves ``is_staff`` until
+the next mutation — the gate and the exchange check every token's state themselves. The user stays active, so a JWT of
+a dead token reaches the gate and gets ``TOKEN_INACTIVE``.
 Applications are never deleted, so the row stays for the modules' foreign keys.
 """
 
@@ -14,15 +16,24 @@ from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.utils import timezone
 
+from django_access.catalogue import registry
 from django_access.exceptions import AccessConflict
 from django_access.models import Application
 
 USERNAME_PREFIX = "access-app-"
-ADMIN_SCOPE_MARK = ":"  # admin scopes are permission keys (<area>:<level>); key-route scopes carry no colon
+
+
+def is_admin_scope(key: str) -> bool:
+    """A staff permission key of the catalogue (``<area>:read|write``) — whatever a module names its key-route scopes."""
+    try:
+        registry.parse_perm(key)
+    except ValueError:
+        return False
+    return True
 
 
 def admin_scopes(scopes: list[str]) -> list[str]:
-    return [scope for scope in scopes if ADMIN_SCOPE_MARK in scope]
+    return [scope for scope in scopes if is_admin_scope(scope)]
 
 
 def _holds_live_admin_token(application: Application) -> bool:
@@ -42,7 +53,9 @@ def _create(application: Application):
 
 
 def sync_service_user(application: Application):
-    """Create the service user when the first live admin token appears; set ``is_staff``."""
+    """Create the service user with the first live admin token; set ``is_staff`` to whether one lives. Runs inside the
+    caller's transaction, the application row locked, so concurrent token changes see each other."""
+    application = Application.objects.select_for_update().select_related("service_user").get(pk=application.pk)
     live = application.is_active and _holds_live_admin_token(application)
     user = application.service_user
     if user is None:
@@ -56,8 +69,8 @@ def sync_service_user(application: Application):
 
 
 def is_service_user(user) -> bool:
-    return Application.objects.filter(service_user_id=user.pk).exists()
+    return hasattr(user, "access_application")  # the reverse one-to-one raises (an AttributeError) when absent
 
 
-def service_users():
+def all_service_users():
     return get_user_model().objects.filter(access_application__isnull=False)

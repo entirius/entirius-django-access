@@ -45,8 +45,8 @@ where it is enforced.
 - **One answer for every failure.** A key module must not turn `None` into different statuses per reason.
 - **Revoking an already revoked token** raises `AccessConflict` in the service; only the API treats it as success.
 - **Rotating an expired token is allowed** and yields a live successor (rotate refuses revoked tokens only).
-- **Admin scopes are permission keys, key-route scopes are not.** `service_users.admin_scopes` tells them apart by the
-  colon (`pim.products:write` vs `vault.api`); a key-route scope with a colon would break that.
+- **Admin scopes are permission keys of the catalogue.** `service_users.is_admin_scope` asks `registry.parse_perm`, not
+  the colon: a module's key-route scope named like `erp:sync` never counts as admin.
 - **An exchanged JWT is decided by its token, before the superuser and staff branches.** Never move a role or bypass
   check above `_token_decision`; token decisions carry `Decision.token` and refuse in every mode.
 - **The service user stays `is_active`.** Only `is_staff` follows the tokens, so a JWT of a dead token reaches the gate

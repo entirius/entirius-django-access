@@ -7,9 +7,10 @@ from django.urls import include, path
 
 from django_access.api.exchange import TokenExchangeView
 from django_access.api.me import MeView
+from django_access.openapi import EXCHANGE_ROUTE
 
 urlpatterns = [
     path("api/access/v2/me/", MeView.as_view(), name="access-me"),
-    path("api/access/v2/token/exchange/", TokenExchangeView.as_view(), name="access-token-exchange"),
+    path(EXCHANGE_ROUTE.lstrip("/"), TokenExchangeView.as_view(), name="access-token-exchange"),
     path("api/access/v2/admin/", include("django_access.api.admin.urls")),
 ]

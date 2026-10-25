@@ -42,6 +42,7 @@ MODES = (ENFORCE, OBSERVE, OFF)  # a tuple: an unhashable setting value must not
 MODE_SETTING = "ACCESS_GATE_MODE"
 ACCESS_DENIED, STAFF_ONLY, UNMAPPED_ROUTE = "ACCESS_DENIED", "STAFF_ONLY", "UNMAPPED_ROUTE"
 NOT_AUTHENTICATED, TOKEN_INACTIVE = "NOT_AUTHENTICATED", "TOKEN_INACTIVE"
+AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED"
 JWT_AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication"
 SESSION_AUTH = "rest_framework.authentication.SessionAuthentication"
 WWW_AUTHENTICATE = 'Bearer realm="api"'
@@ -58,7 +59,7 @@ _DESCRIPTIONS = {
 SUPERUSER_DESCRIPTION = "superuser only"
 # The v2 exception handler's codes and texts, so clients and BDD steps read a gate refusal like a view's.
 _ENVELOPES = {
-    401: ("AUTHENTICATION_REQUIRED", AUTHENTICATION_MESSAGE, "header"),
+    401: (AUTHENTICATION_REQUIRED, AUTHENTICATION_MESSAGE, "header"),
     403: ("PERMISSION_DENIED", PERMISSION_MESSAGE, "path"),
 }
 _reported_modes: set[str] = set()
@@ -98,16 +99,21 @@ def decide(request: HttpRequest, view_func: Callable) -> Decision:
         return ALLOW if info.self_auth else Decision(False, 401, NOT_AUTHENTICATED)
     if not user.is_active:  # whatever the view's authenticator settings, an inactive account is never let through
         return Decision(False, 401, NOT_AUTHENTICATED)
-    # Django serves HEAD with the GET handler, so HEAD needs what GET needs (a GET PII export is a write).
-    method = "GET" if request.method == "HEAD" else request.method
-    needed = route_map.required_permission(info, method)
-    if hasattr(request, "_access_token_id"):
-        return _token_decision(request._access_token_id, user, info, needed)
+    if exchanged(request):
+        return _token_decision(request, user, info)
+    method, needed = _needed(request, info)
     if user.is_superuser:  # without is_staff too: the view's IsAdminUser / IsStaffUser refuses them (bypass row kept)
         return Decision(True, needed=needed, bypass=_is_write(needed, method))
     if not user.is_staff:
         return Decision(False, 403, STAFF_ONLY, needed)
     return _staff_decision(user, info, needed)
+
+
+def _needed(request: HttpRequest, info: RouteInfo) -> tuple[str, str | None]:
+    """The method as the gate reads it and the permission it needs. Django serves HEAD with the GET handler, so HEAD
+    needs what GET needs (a GET PII export is a write)."""
+    method = "GET" if request.method == "HEAD" else request.method
+    return method, route_map.required_permission(info, method)
 
 
 def _is_write(needed: str | None, method: str) -> bool:
@@ -131,18 +137,28 @@ def _staff_decision(user, info: RouteInfo, needed: str | None) -> Decision:
     return Decision(True, needed=needed)
 
 
-def _token_decision(token_id, user, info: RouteInfo, needed: str | None) -> Decision:
-    """An exchanged JWT: its token must be live and its application's service user the JWT's user; then the route
-    needs a permission among the token's admin scopes (write implies read) — the staff baseline is open to it."""
+def _live_token(token_id: int | None, user) -> ApiToken | None:
+    """The token an exchanged JWT names, when it is live and its application's service user is the JWT's user."""
     token = ApiToken.objects.select_related("application").filter(pk=token_id).first() if token_id else None
-    live = token is not None and tokens.token_state(token, timezone.now()) == tokens.ACTIVE
-    if not live or token.application.service_user_id != user.pk:
+    if token is None or tokens.token_state(token, timezone.now()) != tokens.ACTIVE:
+        return None
+    return token if token.application.service_user_id == user.pk else None
+
+
+def _token_decision(request: HttpRequest, user, info: RouteInfo) -> Decision:
+    """An exchanged JWT: a live token of this user, then a permission among its admin scopes (write implies read). Of
+    the staff baseline a token only reads: a key never writes beyond its scopes."""
+    token = _live_token(request._access_token_id, user)
+    if token is None:
         return Decision(False, 403, TOKEN_INACTIVE, token=True)
+    method, needed = _needed(request, info)
     if needed is None:
         logger.error("Admin route without an access area: %s", info.route)
         return Decision(False, 403, UNMAPPED_ROUTE, token=True)
     if needed == STAFF_BASELINE:
-        return Decision(True, needed=needed, token=True)
+        if method in SAFE_METHODS:
+            return Decision(True, needed=needed, token=True)
+        return Decision(False, 403, ACCESS_DENIED, needed, token=True)
     held = admin_scopes(token.scopes)
     if needed == SUPERUSER_ONLY or not _offered(needed) or not any(registry.implies(k, needed) for k in held):
         return Decision(False, 403, ACCESS_DENIED, needed, token=True)
@@ -195,8 +211,13 @@ def _claimed_id(value) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
-def presents_exchanged_token(request: HttpRequest) -> bool:
-    """Whether the Bearer JWT is valid and was bought with a key — a signature check, no query (``off`` mode)."""
+def presents_exchanged_token(request: HttpRequest, view_func: Callable | None = None) -> bool:
+    """Whether the Bearer JWT is valid and was bought with a key — a signature check, no query (``off`` mode, error
+    path). With ``view_func`` only on an admin route: elsewhere the gate does nothing, so it never pays the check."""
+    if not request.META.get("HTTP_AUTHORIZATION"):
+        return False
+    if view_func is not None and not route_map.classify(request.resolver_match.route, view_func).admin:
+        return False
     authenticator = JWTAuthentication()
     header = authenticator.get_header(request)
     try:

@@ -223,22 +223,26 @@ def enforce_has_no_unmapped_routes(app_configs=None, **kwargs) -> list[checks.Ch
 
 @checks.register(checks.Tags.database)
 def service_users_are_machines(app_configs=None, **kwargs) -> list[checks.CheckMessage]:
-    """A service account never becomes a superuser and never gets a password — it acts only through its tokens.
+    """A service account never becomes a superuser, never gets a password, a group or a user permission — it acts only
+    through its tokens.
 
     Reads the database, so it is a ``database`` check: ``migrate`` and ``check --database default`` run it.
     """
     try:
-        wrong = [
-            user.username for user in service_users.service_users() if user.is_superuser or user.has_usable_password()
-        ]
+        users = service_users.all_service_users().prefetch_related("groups", "user_permissions")
+        wrong = [user.username for user in users if _not_a_machine(user)]
     except DatabaseError:  # before migrate: no table, nothing to check
         return []
     if not wrong:
         return []
     return [
         checks.Error(
-            f"Service accounts with superuser status or a usable password: {', '.join(sorted(wrong))}",
-            hint="Clear is_superuser and set an unusable password; a service account acts only through its tokens.",
+            f"Service accounts with superuser status, a password, a group or a permission: {', '.join(sorted(wrong))}",
+            hint="Clear them and set an unusable password; a service account acts only through its tokens.",
             id="django_access.E013",
         )
     ]
+
+
+def _not_a_machine(user) -> bool:
+    return bool(user.is_superuser or user.has_usable_password() or user.groups.all() or user.user_permissions.all())

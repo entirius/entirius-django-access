@@ -6,6 +6,7 @@
 from django.urls import include, path
 from rest_framework.response import Response
 
+from django_access.openapi import EXCHANGE_ROUTE
 from tests import gate_urls
 from tests.gate_urls import JwtAdminView
 from tests.route_map_urls import owned
@@ -13,7 +14,7 @@ from tests.route_map_urls import owned
 PRODUCTS = "/api/pim/v2/admin/emporium/products/"
 SCHEMA = "/api/pim/v2/admin/features/"
 PRODUCT_DELETE = "/api/pim/v2/admin/emporium/products/SKU-1/"
-EXCHANGE = "/api/access/v2/token/exchange/"
+EXCHANGE = EXCHANGE_ROUTE
 
 
 class DeletableAdminView(JwtAdminView):

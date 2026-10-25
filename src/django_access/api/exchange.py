@@ -23,27 +23,33 @@ from django_access.schemas.responses import TokenExchangeResponse
 from django_access.services import gate, tokens
 
 INVALID_API_KEY = "INVALID_API_KEY"
+WWW_AUTHENTICATE = 'ApiKey realm="api", header="X-API-KEY"'
 _INVALID_DESCRIPTION = "An active application key with an admin scope is required in X-API-KEY."
 
 
 class _ExchangeThrottle(SimpleRateThrottle):
-    """A scope rate from ``DEFAULT_THROTTLE_RATES``, else the class rate — never ``None``, never malformed."""
+    """The scope's rate from ``DEFAULT_THROTTLE_RATES``, else ``default_rate`` — never ``None``, never malformed.
+
+    No class-level ``rate``: DRF only calls ``get_rate()`` when ``rate`` is unset, so a class rate would hide the setting.
+    """
+
+    default_rate: str
 
     def get_rate(self) -> str:
         try:
             rate = super().get_rate()
         except ImproperlyConfigured:  # scope missing from DEFAULT_THROTTLE_RATES
-            return self.rate
+            return self.default_rate
         if not rate or "/" not in rate:  # a malformed rate must not disable throttling
-            return self.rate
+            return self.default_rate
         return rate
 
 
 class KeyThrottle(_ExchangeThrottle):
     scope = "access_token_exchange"
-    rate = "30/min"
+    default_rate = "30/min"
 
-    def get_cache_key(self, request: Request, view) -> str | None:
+    def get_cache_key(self, request: Request, view: APIView) -> str | None:
         presented = tokens.presented_key(request)
         if presented is None:
             return None  # the address throttle still counts it
@@ -52,21 +58,23 @@ class KeyThrottle(_ExchangeThrottle):
 
 class AddressThrottle(_ExchangeThrottle):
     scope = "access_token_exchange_address"
-    rate = "120/min"
+    default_rate = "120/min"
 
-    def get_cache_key(self, request: Request, view) -> str:
+    def get_cache_key(self, request: Request, view: APIView) -> str:
         return self.cache_format % {"scope": self.scope, "ident": self.get_ident(request)}
 
 
 def _invalid_key() -> JsonResponse:
     detail = ErrorDetail(field=None, location="header", issue=INVALID_API_KEY, description=_INVALID_DESCRIPTION)
     body = ErrorResponse(
-        error="AUTHENTICATION_REQUIRED",
+        error=gate.AUTHENTICATION_REQUIRED,
         message=gate.AUTHENTICATION_MESSAGE,
         debug_id=gate.new_debug_id(),
         details=[detail],
     )
-    return JsonResponse(body.model_dump(), status=401)
+    response = JsonResponse(body.model_dump(), status=401)
+    response["WWW-Authenticate"] = WWW_AUTHENTICATE
+    return response
 
 
 class TokenExchangeView(APIView):

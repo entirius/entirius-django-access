@@ -49,9 +49,9 @@ def test_the_area_is_in_the_catalogue():
 @pytest.mark.parametrize(
     ("role_key", "level"), [("administrator", "write"), ("manager", "write"), ("editor", "write"), ("viewer", "read")]
 )
-def test_builtin_roles_keep_their_rights(role_key, level):
+def test_builtin_roles_hold_the_area_at_their_schema_level(role_key, level):
     permissions = builtin_permissions(role_key)
-    assert permissions[AREA] == level == ("read" if role_key == "viewer" else permissions["pim.schema"])
+    assert (permissions[AREA], permissions["pim.schema"]) == (level, level)
 
 
 def custom_role(*permissions: str) -> Role:

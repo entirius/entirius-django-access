@@ -62,6 +62,20 @@ def test_revoking_the_last_admin_token_drops_staff(issue, application, system):
     assert flags(application) == (False, True)
 
 
+def test_a_new_admin_token_after_revoking_all_restores_the_same_user(issue, application, system):
+    token, _ = issue(ADMIN)
+    before = service_user(application).pk
+    tokens.revoke_token(token, actor=system)
+    issue(ADMIN)
+    assert (service_user(application).pk, flags(application)) == (before, (True, True))
+
+
+def test_the_grant_api_refuses_the_service_user(issue, application, admin_api):
+    issue(ADMIN)
+    body = {"role": EDITOR, "user_id": service_user(application).pk}
+    assert admin_api.post("/api/access/v2/admin/grants/", body, format="json").status_code in (400, 404)
+
+
 def test_a_key_route_token_does_not_keep_staff(issue, application, system):
     admin, _ = issue(ADMIN)
     issue(["vault.api"])
@@ -137,13 +151,19 @@ def test_check_runs_only_with_a_database(issue, application):
     assert service_checks() == ["django_access.E013"]
 
 
-@pytest.mark.parametrize("change", ["superuser", "password"])
-def test_check_flags_a_superuser_or_a_password(issue, application, change):
+@pytest.mark.parametrize("change", ["superuser", "password", "group", "permission"])
+def test_check_flags_anything_but_a_machine(issue, application, group, change):
+    from django.contrib.auth.models import Permission
+
     issue(ADMIN)
     user = service_user(application)
     if change == "superuser":
         user.is_superuser = True
-    else:
+    elif change == "password":
         user.set_password("a password someone set")
+    elif change == "group":
+        user.groups.add(group)
+    else:
+        user.user_permissions.add(Permission.objects.first())
     user.save()
     assert service_checks() == ["django_access.E013"]

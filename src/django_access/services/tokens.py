@@ -61,27 +61,18 @@ def is_secret(scopes: list[str]) -> bool:
     return not all(publishable.get(key, False) for key in scopes)
 
 
-def _is_admin_scope(key: str) -> bool:
-    """A staff permission key (``<area>:read|write``) of the catalogue — any area but ``access.manage``."""
-    try:
-        registry.parse_perm(key)
-    except ValueError:
-        return False
-    return True
-
-
-def _admin_scopes_known(scopes: set[str]) -> dict[str, bool]:
-    """``{scope: False}`` for the admin scopes among ``scopes`` (admin scopes are secret); ``access.manage`` refused."""
-    if reserved := sorted(key for key in scopes if key.rpartition(":")[0] == ACCESS_MANAGE):
+def _refuse_access_manage(scopes: list[str]) -> None:
+    if reserved := sorted({key for key in scopes if key.rpartition(":")[0] == ACCESS_MANAGE}):
         raise ValueError(f"A token never manages access: {reserved}")
-    return {key: False for key in scopes if _is_admin_scope(key)}
 
 
 def _validated_scopes(scopes: list[str]) -> list[str]:
-    """Deduplicated, sorted catalogue keys of one group; ``ValueError`` when empty, unknown or mixed."""
+    """Deduplicated, sorted keys of one group — key-route scopes or admin scopes (secret); ``ValueError`` when empty,
+    unknown, ``access.manage`` or mixed."""
     if not scopes:
         raise ValueError("A token needs at least one scope")
-    publishable = {**_publishable(), **_admin_scopes_known(set(scopes))}
+    _refuse_access_manage(scopes)
+    publishable = {**_publishable(), **dict.fromkeys(admin_scopes(scopes), False)}
     if unknown := set(scopes) - publishable.keys():
         raise ValueError(f"Unknown token scopes: {sorted(unknown)}")
     if len({publishable[key] for key in scopes}) > 1:
@@ -148,7 +139,7 @@ def update_application(application: Application, updates: dict[str, Any], *, act
     for key, value in updates.items():
         setattr(application, key, value)
     with unique_or_conflict(message):
-        application.save()
+        application.save(update_fields=list(updates))  # never the service-user link of a stale instance
     changed = {key: change for key, change in changes.items() if change["from"] != change["to"]}
     sync_service_user(application)
     record_audit(AuditAction.APPLICATION_UPDATE, actor, application, {"name": application.name, "changes": changed})
