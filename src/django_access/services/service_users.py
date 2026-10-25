@@ -5,8 +5,9 @@
 
 One per application, created with its first admin-scoped token: username ``access-app-<pk>``, unusable password,
 never a superuser, no grants — its permissions are the scopes of the token it presents (``services.gate``). It is staff
-and active while the application is active and holds a live admin-scoped token; every token and application mutation
-recomputes that in its own transaction. Applications are never deleted, so the row stays for the modules' foreign keys.
+while the application is active and holds a live admin-scoped token; every token and application mutation recomputes
+that in its own transaction. It stays active, so a JWT of a dead token reaches the gate and gets ``TOKEN_INACTIVE``.
+Applications are never deleted, so the row stays for the modules' foreign keys.
 """
 
 from django.contrib.auth import get_user_model
@@ -34,23 +35,23 @@ def _create(application: Application):
     users = get_user_model().objects
     if users.filter(username=username).exists():
         raise AccessConflict(f"A user {username!r} already exists and is not this application's service account")
-    user = users.create_user(username=username, is_staff=False, is_active=False)  # no password → unusable
+    user = users.create_user(username=username, is_staff=False)  # no password → unusable
     application.service_user = user
     application.save(update_fields=["service_user"])
     return user
 
 
 def sync_service_user(application: Application):
-    """Create the service user when the first live admin token appears; set ``is_staff`` / ``is_active``."""
+    """Create the service user when the first live admin token appears; set ``is_staff``."""
     live = application.is_active and _holds_live_admin_token(application)
     user = application.service_user
     if user is None:
         if not live:
             return None
         user = _create(application)
-    if (user.is_staff, user.is_active) != (live, live):
-        user.is_staff = user.is_active = live
-        user.save(update_fields=["is_staff", "is_active"])
+    if user.is_staff != live:
+        user.is_staff = live
+        user.save(update_fields=["is_staff"])
     return user
 
 

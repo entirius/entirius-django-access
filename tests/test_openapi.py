@@ -7,7 +7,7 @@ from drf_spectacular.generators import SchemaGenerator
 from drf_spectacular.settings import SPECTACULAR_DEFAULTS, patched_settings
 from drf_spectacular.validation import validate_schema
 
-from django_access.openapi import add_api_key_security
+from django_access.openapi import EXCHANGE_ROUTE, add_api_key_security
 
 HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
 ADMIN = "/api/access/v2/admin/"
@@ -27,6 +27,7 @@ OPERATIONS = {
     ("post", ADMIN + "tokens/{id}/expiry/"),
     ("post", ADMIN + "tokens/{id}/rotate/"),
     ("get", "/api/access/v2/me/"),
+    ("post", "/api/access/v2/token/exchange/"),
 }
 
 
@@ -103,5 +104,12 @@ def test_hook_keeps_the_documents_jwt_scheme_name():
 def test_access_admin_routes_get_no_api_key():
     schema = SchemaGenerator(urlconf="django_access.urls").get_schema(request=None, public=True)
     add_api_key_security(schema, generator=None, request=None, public=True)
-    requirements = [req for item in schema["paths"].values() for op in item.values() for req in op.get("security", [])]
+    paths = {path: item for path, item in schema["paths"].items() if path != EXCHANGE_ROUTE}
+    requirements = [req for item in paths.values() for op in item.values() for req in op.get("security", [])]
     assert requirements and all("ApiKeyAuth" not in requirement for requirement in requirements)
+
+
+def test_the_exchange_takes_the_key_alone():
+    schema = SchemaGenerator(urlconf="django_access.urls").get_schema(request=None, public=True)
+    add_api_key_security(schema, generator=None, request=None, public=True)
+    assert schema["paths"][EXCHANGE_ROUTE]["post"]["security"] == [{"ApiKeyAuth": []}]

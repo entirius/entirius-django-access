@@ -23,6 +23,11 @@ class ReservedPermission(ValueError):
         self.keys = keys
 
 
+class InvalidApiKey(Exception):
+    """The presented key cannot be exchanged: missing, unknown, expired, revoked, inactive or without an admin scope —
+    one refusal for every reason."""
+
+
 class TokenExpiryError(ValueError):
     """An expiry in the past (D31: no token needs an expiry, and none has a maximum)."""
 

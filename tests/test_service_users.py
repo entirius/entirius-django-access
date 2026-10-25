@@ -59,14 +59,14 @@ def test_revoking_the_last_admin_token_drops_staff(issue, application, system):
     tokens.revoke_token(first, actor=system)
     assert flags(application) == (True, True)
     tokens.revoke_token(second, actor=system)
-    assert flags(application) == (False, False)
+    assert flags(application) == (False, True)
 
 
 def test_a_key_route_token_does_not_keep_staff(issue, application, system):
     admin, _ = issue(ADMIN)
     issue(["vault.api"])
     tokens.revoke_token(admin, actor=system)
-    assert flags(application) == (False, False)
+    assert flags(application) == (False, True)
 
 
 def test_rotation_keeps_staff_and_the_same_user(issue, application, system):
@@ -76,7 +76,7 @@ def test_rotation_keeps_staff_and_the_same_user(issue, application, system):
     assert service_user(application).pk == before
     assert flags(application) == (True, True)
     tokens.revoke_token(successor, actor=system)
-    assert flags(application) == (False, False)
+    assert flags(application) == (False, True)
 
 
 def test_expiry_change_recomputes(issue, application, system, clock):
@@ -86,13 +86,13 @@ def test_expiry_change_recomputes(issue, application, system, clock):
     other, _ = issue(ADMIN, expires_at=clock.now + timedelta(hours=2))
     clock.advance(hours=3)
     tokens.revoke_token(other, actor=system)  # the first expired meanwhile
-    assert flags(application) == (False, False)
+    assert flags(application) == (False, True)
 
 
 def test_deactivating_the_application_drops_staff_and_reactivating_restores(issue, application, system):
     issue(ADMIN)
     tokens.update_application(application, {"is_active": False}, actor=system)
-    assert flags(application) == (False, False)
+    assert flags(application) == (False, True)
     tokens.update_application(application, {"is_active": True}, actor=system)
     assert flags(application) == (True, True)
 

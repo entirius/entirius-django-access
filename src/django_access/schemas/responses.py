@@ -272,3 +272,11 @@ class TokenListResponse(BaseModel):
     next: str | None
     previous: str | None
     results: list[TokenResponse]
+
+
+class TokenExchangeResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    access: str = Field(description="SimpleJWT access token of the application's service account; send it as Bearer.")
+    token_type: Literal["Bearer"] = "Bearer"  # noqa: S105 — the token type, not a secret
+    expires_in: int = Field(description="Seconds until the access token expires.", examples=[300])

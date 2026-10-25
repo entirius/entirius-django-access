@@ -10,6 +10,7 @@ failure. Neither the raw value nor ``key_hash`` is ever logged or written to an 
 """
 
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta
 from typing import Any
@@ -18,13 +19,16 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import F, Q
 from django.utils import timezone
+from rest_framework_simplejwt.tokens import AccessToken
 
 from django_access.catalogue import registry
 from django_access.catalogue.areas import ACCESS_MANAGE
-from django_access.exceptions import AccessConflict, TokenExpiryError
+from django_access.exceptions import AccessConflict, InvalidApiKey, TokenExpiryError
 from django_access.models import ApiToken, Application, AuditAction
 from django_access.services.access_service import Actor, record_audit, unique_or_conflict
 from django_access.services.service_users import admin_scopes, sync_service_user
+
+logger = logging.getLogger("django_access.tokens")
 
 TOKEN_PREFIX = "ent_api_"  # noqa: S105 — the public marker of every raw value
 MAX_PRESENTED_LENGTH = 256
@@ -32,6 +36,7 @@ KEY_HEADERS = ("HTTP_X_API_KEY", "HTTP_X_API_ADMIN_KEY")
 ACTIVE, REVOKED, EXPIRED, INACTIVE = "active", "revoked", "expired", "application inactive"
 _EDITABLE_APPLICATION_FIELDS = frozenset({"name", "description", "is_active"})
 MAX_OVERLAP_HOURS = 365 * 24
+EXCHANGE_CLAIM = "access_token_id"  # the JWT claim naming the token an exchanged JWT came from
 
 
 def hash_key(raw: str) -> str:
@@ -272,7 +277,7 @@ def _allows(token: ApiToken, scope: str, channel_idx: str | None) -> bool:
     return scope in token.scopes and pin_holds
 
 
-def _presented(request) -> str | None:
+def presented_key(request) -> str | None:
     """``X-API-KEY``, else ``X-API-ADMIN-KEY``; an empty or over-long value counts as none."""
     value = next((request.META[header] for header in KEY_HEADERS if request.META.get(header)), None)
     return value if value and len(value) <= MAX_PRESENTED_LENGTH else None
@@ -304,7 +309,7 @@ def verify_api_key(request, scope: str, channel_idx: str | None = None) -> ApiTo
     """The token presented by ``request`` when it may use ``scope`` on ``channel_idx``, else ``None`` (any reason).
 
     ``channel_idx=None`` (a route without a channel) accepts unpinned tokens only: a pinned token is refused there."""
-    presented = _presented(request)
+    presented = presented_key(request)
     if presented is None:
         return None
     token = _candidate(presented, scope, channel_idx)
@@ -314,3 +319,38 @@ def verify_api_key(request, scope: str, channel_idx: str | None = None) -> ApiTo
     _touch(token, now)
     request.access_token = token
     return token
+
+
+def exchange_ttl() -> timedelta:
+    """``ACCESS_TOKEN_EXCHANGE_TTL_S``: the lifetime of an exchanged JWT (300 s)."""
+    return timedelta(seconds=getattr(settings, "ACCESS_TOKEN_EXCHANGE_TTL_S", 300))
+
+
+def _exchangeable(presented: str | None, now: datetime) -> ApiToken:
+    """The unpinned, active token of the key with an admin scope and a staff service user; ``InvalidApiKey`` else."""
+    if presented is None:
+        raise InvalidApiKey
+    rows = ApiToken.objects.select_related("application__service_user")
+    token = rows.filter(key_hash=hash_key(presented), channel_idx__isnull=True).first()
+    if token is None or token_state(token, now) != ACTIVE or not admin_scopes(token.scopes):
+        raise InvalidApiKey
+    user = token.application.service_user
+    if user is None or not (user.is_active and user.is_staff) or user.is_superuser:
+        raise InvalidApiKey
+    return token
+
+
+def exchange(request) -> tuple[ApiToken, AccessToken]:
+    """Trade the presented key for a short-lived SimpleJWT access token of its application's service user.
+
+    The JWT carries ``access_token_id``: the gate decides every admin request by that token's scopes and state. No
+    refresh token, no audit row (issue, rotate and revoke have theirs); ``last_used_at`` as for any key use.
+    """
+    now = timezone.now()
+    token = _exchangeable(presented_key(request), now)
+    jwt = AccessToken.for_user(token.application.service_user)
+    jwt.set_exp(from_time=now, lifetime=exchange_ttl())
+    jwt[EXCHANGE_CLAIM] = token.pk
+    _touch(token, now)
+    logger.info("Token exchanged: token=%s application=%s", token.pk, token.application_id)
+    return token, jwt

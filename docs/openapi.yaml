@@ -876,6 +876,31 @@ paths:
           description: ''
         '401':
           description: No response body
+  /api/access/v2/token/exchange/:
+    post:
+      operationId: access_token_exchange
+      description: 'Send the key in `X-API-KEY` (alias `X-API-ADMIN-KEY`), no body.
+        The key needs at least one admin scope (`<area>:read|write`). The JWT acts
+        as the application''s service account; the gate checks every admin request
+        against the key''s scopes, so a revoked key stops the JWT at once. No refresh
+        token: exchange again when it expires. Every refusal is 401 `INVALID_API_KEY`;
+        429 above the rate.'
+      summary: Exchange an application key for a short-lived admin JWT
+      tags:
+      - Access Tokens
+      security:
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenExchangeResponse'
+          description: ''
+        '401':
+          description: INVALID_API_KEY
+        '429':
+          description: Throttled
 components:
   schemas:
     ApplicationCreateRequest:
@@ -1984,6 +2009,30 @@ components:
       - scopes
       title: TokenCreateRequest
       type: object
+    TokenExchangeResponse:
+      additionalProperties: false
+      properties:
+        access:
+          description: SimpleJWT access token of the application's service account;
+            send it as Bearer.
+          title: Access
+          type: string
+        token_type:
+          const: Bearer
+          default: Bearer
+          title: Token Type
+          type: string
+        expires_in:
+          description: Seconds until the access token expires.
+          examples:
+          - 300
+          title: Expires In
+          type: integer
+      required:
+      - access
+      - expires_in
+      title: TokenExchangeResponse
+      type: object
     TokenExpiryRequest:
       additionalProperties: false
       properties:
@@ -2276,3 +2325,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-KEY
