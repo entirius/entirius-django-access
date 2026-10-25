@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+Application tokens on admin routes. Existing tokens, key routes and staff behave as before.
+
+- Admin scopes: a token accepts any staff permission key `<area>:read|write` of the catalogue except `access.manage`.
+  They are secret (never with a publishable scope) and never pinned to a channel.
+- Service user per application (`Application.service_user`, migration `0006`): created with the first live
+  admin-scoped token — username `access-app-<id>`, unusable password, never a superuser, no grants (the grant service
+  refuses it), not in the staff list; `is_staff` while the application is active and holds a live admin-scoped token,
+  recomputed by every token and application change. Check `django_access.E013` (`database` tag) flags one that is a
+  superuser or has a usable password.
+- `POST api/access/v2/token/exchange/`: `X-API-KEY` with an admin scope → `{access, token_type, expires_in}`, a
+  SimpleJWT access token of the service user with the claim `access_token_id`, valid `ACCESS_TOKEN_EXCHANGE_TTL_S`
+  (300 s), no refresh token, `Cache-Control: no-store`. Every refusal is 401 `INVALID_API_KEY`. Throttled per key
+  (`access_token_exchange`, 30/min) and per address (`access_token_exchange_address`, 120/min). Updates
+  `last_used_at`, logs on `django_access.tokens`, writes no audit row. Documented under `ApiKeyAuth`.
+- Gate: a JWT with `access_token_id` is decided by its token — 403 `TOKEN_INACTIVE` for a revoked, expired or
+  inactive token or a claim of another user, else the token's admin scopes (write implies read; staff baseline open;
+  never the superuser bypass). Token decisions refuse in every `ACCESS_GATE_MODE`, `observe` and `off` included.
+- Area `pim.attribute_values` (50 areas): the PIM `attributes/` admin routes leave `pim.schema`. Editor writes it;
+  migration `0007` gives every custom role holding `pim.schema` the same level on it. PIM picks it up when it declares
+  the area itself.
+- Docs: integrations on admin routes (concept, api, operations), hosts with their own gate (install), 1.0 → 1.1
+  (upgrade).
+
 ## 1.0.0 — 2026-10-12
 
 First release.

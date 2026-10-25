@@ -39,23 +39,25 @@ Read first: `docs/install.md` (host) · `docs/upgrade.md` (before the first depl
 ```
 src/django_access/
 ├── apps.py (checks, cache signals, post_migrate legacy import)  middleware.py (AccessGateMiddleware)
-│   openapi.py (ApiKeyAuth hook)  checks.py (E001–E008, E010–E012, W002, W003, W010, I001)  exceptions.py  urls.py
+│   openapi.py (ApiKeyAuth hook)  checks.py (E001–E008, E010–E013, W002, W003, W010, I001)  exceptions.py  urls.py
 │   signals.py (cache invalidation, staff_user_created)
 │   testing.py (assert_routes_covered, for module test suites)
 ├── catalogue/    areas  scopes (token scopes)  defaults (route rules, method and area overrides)  registry
 ├── models/       role (Role, RolePermission)  grant  audit (AuditEntry, AuditAction)  application  token (ApiToken)
 ├── services/     access_service (every role/grant mutation, staff create + audit + lockout guard)  permissions (cached)
-│                 route_map (classify, audit_routes)  gate (decide)  tokens (issue, rotate, revoke, verify_api_key)
+│                 route_map (classify, audit_routes)  gate (decide)  tokens (issue, rotate, revoke, verify_api_key,
+│                 exchange)  service_users (the account an application's admin-scoped tokens act as)
 │                 legacy (import, legacy_report, purge_legacy_sources)  directory (read queries of the API)
 │                 login_guard (failed-login counter of the service's password logins, admin login form wrapper)
 ├── schemas/      requests.py  responses.py (Pydantic, extra="forbid")
-├── api/          me.py  permissions.py (IsStaffUser, HasAreaPermission)  admin/ (urls, thin views)
+├── api/          me.py  exchange.py (key → admin JWT)  permissions.py (IsStaffUser, HasAreaPermission)  admin/ (urls, views)
 └── management/commands/  access_routes  access_token  access_import_legacy_keys  access_legacy_report
                           access_purge_legacy_keys
 ```
 
-Flow: request → resolve → gate (admin set only: principal → role permissions → allow / 401 / 403) → view. Key routes:
-the module's own auth → `verify_api_key(request, scope, channel_idx)` → one lookup by hash (the row of the channel,
+Flow: request → resolve → gate (admin set only: principal → role permissions, or the token of an exchanged JWT →
+allow / 401 / 403) → view. Integrations: key → `token/exchange/` → JWT of the application's service user → admin
+routes. Key routes: the module's own auth → `verify_api_key(request, scope, channel_idx)` → one lookup by hash (the row of the channel,
 else the unpinned one). `migrate` →
 `post_migrate` → legacy import (no expiry; teams set one per token) → `access_import_legacy_keys --check` in the deploy
 → `access_legacy_report` shows who still uses them → `access_purge_legacy_keys --yes` on demand. Route areas: the
@@ -65,7 +67,8 @@ view's `access_area` → the module's `AppConfig` rules → the access defaults.
 |---|---|
 | Areas, roles, gate decision table, token rules, legacy mapping | `docs/concept.md` |
 | Settings, middleware, URLs, OpenAPI hook, deploy order, rollback, hardening | `docs/install.md` |
-| Endpoint, body, response, errors; `verify_api_key` contract | `docs/api.md`; `docs/openapi.yaml` |
+| Endpoint, body, response, errors; `verify_api_key` contract; the key exchange | `docs/api.md`; `docs/openapi.yaml` |
+| Integrations on admin routes: admin scopes, service user, exchange, the gate on exchanged JWTs, hosts with their own gate | `docs/concept.md`, `docs/operations.md`, `docs/install.md` |
 | Upgrade preflight: `access_routes --unmapped`, `check --deploy` (`E011`), observe first | `docs/upgrade.md` |
 | Legacy import report, `--check`, legacy report, expiry, purge, rotation, revocation, lockout | `docs/operations.md` |
 | Which test covers what; fake legacy modules, the security suite, PostgreSQL-only tests, the harness run | `docs/testing.md` |

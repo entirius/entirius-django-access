@@ -74,12 +74,22 @@ fails on any admin route without an area and on any rule matching another module
 | `AUTH_TOKEN_MAX_FAILURES_PER_USER` | `50` | failed logins per username from any address before 429 — slows guesses spread over many addresses; the price: anyone who knows a username can hold it at 429 for up to `AUTH_TOKEN_USER_FAILURE_WINDOW_S` |
 | `AUTH_TOKEN_USER_FAILURE_WINDOW_S` | `3600` | window of the per-username counter, from the first failure; a success does not clear it |
 | `ACCESS_TOKEN_LAST_USED_INTERVAL_S` | `300` | `last_used_at` is written at most once per token per interval |
+| `ACCESS_TOKEN_EXCHANGE_TTL_S` | `300` | lifetime of a JWT bought at `token/exchange/` |
+| `REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]` `access_token_exchange` / `access_token_exchange_address` | `30/min` / `120/min` | exchanges per key / per address; a missing or malformed rate falls back to the default |
 | `AGREEMENTS_API_KEY` | `""` | read by the legacy import only (agreements' own setting) |
 
 The mode is a setting only — no API, admin page or database row changes it.
 
 **Kill switch.** `ACCESS_GATE_MODE = "off"` (or `observe`) and a restart: every admin route behaves as before the
-module. Tokens and `verify_api_key` are not affected by the mode.
+module for people. Tokens and `verify_api_key` are not affected by the mode, and a JWT bought at `token/exchange/` is
+decided by its token in every mode.
+
+## Hosts with their own gate
+
+A host may run its own route matrix in front of the admin API and keep the access gate in `observe`. Token requests
+are still enforced by access (above). The host's gate sees an ordinary staff JWT of the service user
+(`access-app-<application id>`), so it must also let that user through in its own model — grant it there what the
+token's scopes allow, nothing more. Both gates then have to say yes; access alone revokes at once.
 
 ## Production hardening
 
