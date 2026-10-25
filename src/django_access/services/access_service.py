@@ -6,7 +6,7 @@
 The guard wraps every change that can take access away (update, delete, revoke): when an access manager existed before
 and none is left after, it raises ``AccessLockout`` and the whole transaction rolls back. Creating a role or a grant
 cannot take access away, so it skips the two guard queries. ``access.manage`` is never part of a custom role, and grants
-go only to active staff users (or to a group). ``create_staff_user`` adds an active staff account (never a superuser) with
+go only to active staff users (or to a group), never to an application's service account. ``create_staff_user`` adds an active staff account (never a superuser) with
 one role; no password value reaches an audit row, a log line or a cache key.
 """
 
@@ -27,6 +27,7 @@ from django_access.catalogue.areas import ACCESS_MANAGE
 from django_access.exceptions import AccessConflict, AccessLockout, ReservedPermission
 from django_access.models import AuditAction, AuditEntry, Grant, Role, RolePermission
 from django_access.services.permissions import ADMINISTRATOR, MANAGE_ACCESS_PERMISSION, bump_version
+from django_access.services.service_users import is_service_user
 from django_access.signals import staff_user_created
 
 SYSTEM_LABEL = "system"
@@ -209,6 +210,8 @@ def grant_role(role: Role, *, user=None, group: Group | None = None, actor: Acto
         raise ValueError("Grant a role to exactly one of user or group")
     if user is not None and not (user.is_active and user.is_staff):
         raise ValueError("Grant target must be an active staff user")
+    if user is not None and is_service_user(user):
+        raise ValueError("A service account takes its permissions from its tokens, never from a grant")
     message = f"Role {role.key!r} is already granted"
     if Grant.objects.filter(role=role, user=user, group=group).exists():
         raise AccessConflict(message)

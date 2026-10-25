@@ -6,7 +6,11 @@ from django.db import models
 
 
 class Application(models.Model):
-    """A machine client (storefront, widget, integration) holding application tokens."""
+    """A machine client (storefront, widget, integration) holding application tokens.
+
+    ``service_user`` is the account the application acts as on admin routes — created with its first admin-scoped
+    token, staff only while such a token lives (``services.service_users``).
+    """
 
     name = models.CharField(max_length=128, unique=True)
     description = models.TextField(blank=True, default="")
@@ -14,6 +18,13 @@ class Application(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    service_user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="access_application",
     )
 
     class Meta:

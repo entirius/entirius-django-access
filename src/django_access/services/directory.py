@@ -92,7 +92,8 @@ def grant_target(role_key: str, user_id: int | None, group_id: int | None) -> tu
 
 
 def _active_staff() -> QuerySet:
-    return get_user_model().objects.filter(is_active=True, is_staff=True)
+    """Active staff people — an application's service account is listed with its application, not here."""
+    return get_user_model().objects.filter(is_active=True, is_staff=True, access_application__isnull=True)
 
 
 def staff_users(search: str = "") -> QuerySet:

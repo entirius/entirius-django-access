@@ -15,11 +15,12 @@ from collections import Counter
 from django.apps import apps
 from django.conf import settings
 from django.core import checks
+from django.db import DatabaseError
 
 from django_access.catalogue import registry
 from django_access.catalogue.areas import AREA_KEY_RE, LEVEL_SETS, PSEUDO_AREAS, READ, SENSITIVE_FLAGS, WRITE, Area
 from django_access.catalogue.defaults import AREA_OVERRIDES, RouteRule
-from django_access.services import gate, route_map
+from django_access.services import gate, route_map, service_users
 from django_access.services.gate import ENFORCE, MODE_SETTING, MODES
 
 PROCESS_LOCAL_CACHES = frozenset(
@@ -216,5 +217,28 @@ def enforce_has_no_unmapped_routes(app_configs=None, **kwargs) -> list[checks.Ch
             hint="run manage.py access_routes --unmapped; deploy with ACCESS_GATE_MODE=observe until the report is "
             "clean",
             id="django_access.E011",
+        )
+    ]
+
+
+@checks.register(checks.Tags.database)
+def service_users_are_machines(app_configs=None, **kwargs) -> list[checks.CheckMessage]:
+    """A service account never becomes a superuser and never gets a password — it acts only through its tokens.
+
+    Reads the database, so it is a ``database`` check: ``migrate`` and ``check --database default`` run it.
+    """
+    try:
+        wrong = [
+            user.username for user in service_users.service_users() if user.is_superuser or user.has_usable_password()
+        ]
+    except DatabaseError:  # before migrate: no table, nothing to check
+        return []
+    if not wrong:
+        return []
+    return [
+        checks.Error(
+            f"Service accounts with superuser status or a usable password: {', '.join(sorted(wrong))}",
+            hint="Clear is_superuser and set an unusable password; a service account acts only through its tokens.",
+            id="django_access.E013",
         )
     ]
