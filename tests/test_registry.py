@@ -34,7 +34,7 @@ def ids(messages) -> list[str]:
 
 
 def test_defaults_without_declarations():
-    assert len(registry.areas()) == 49
+    assert len(registry.areas()) == 50
     assert len(registry.scopes()) == 9
     assert registry.route_rules() == DEFAULT_RULES
     assert registry.area("faq.faq").module == "django_faq"

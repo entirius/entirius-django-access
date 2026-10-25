@@ -42,7 +42,7 @@ def _module(label: str, root: str, catch_all: str, *rules: tuple[str, str]) -> t
 
 
 _OPTIONAL_CHANNEL = rf"(?:{SEGMENT})?"
-_PIM_SCHEMA = "(?:channels|features|feature-sets|attributes|attributes-groups|link-types|files-categories)/"
+_PIM_SCHEMA = "(?:channels|features|feature-sets|attributes-groups|link-types|files-categories)/"
 _FEED_PRODUCTS = "(?:products|product-links|pim-sku|realproducts|auto-matched|duplicates|push)/"
 _CONTENTDB_V1 = rf"api-admin/contentdb/{SEGMENT}"
 _CONTENTDB_SCHEMA = (
@@ -59,6 +59,7 @@ DEFAULT_RULES: tuple[RouteRule, ...] = (
         (f"{_OPTIONAL_CHANNEL}categories/", "pim.categories"),
         (f"(?:gap-definitions/|{_OPTIONAL_CHANNEL}gaps/)", "pim.quality"),
         (f"{_OPTIONAL_CHANNEL}{_PIM_SCHEMA}", "pim.schema"),
+        (f"{_OPTIONAL_CHANNEL}attributes/", "pim.attribute_values"),
     ),
     *_module(
         "django_pim",

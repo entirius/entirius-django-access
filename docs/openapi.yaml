@@ -1972,10 +1972,13 @@ components:
           title: Name
           type: string
         scopes:
-          description: Token scope keys from the catalogue; publishable and secret
-            scopes never share a token.
+          description: Token scope keys from the catalogue, or admin scopes `<area>:read|write`
+            (any area but access.manage; secret, never pinned to a channel); publishable
+            and secret scopes never share a token.
           examples:
           - - checkout.storefront
+          - - pim.products:write
+            - pim.schema:read
           items:
             maxLength: 64
             type: string

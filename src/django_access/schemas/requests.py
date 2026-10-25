@@ -151,8 +151,11 @@ class TokenCreateRequest(BaseModel):
     scopes: list[ScopeKey] = Field(
         min_length=1,
         max_length=32,
-        description="Token scope keys from the catalogue; publishable and secret scopes never share a token.",
-        examples=[["checkout.storefront"]],
+        description=(
+            "Token scope keys from the catalogue, or admin scopes `<area>:read|write` (any area but access.manage; "
+            "secret, never pinned to a channel); publishable and secret scopes never share a token."
+        ),
+        examples=[["checkout.storefront"], ["pim.products:write", "pim.schema:read"]],
     )
     channel_idx: str | None = Field(
         default=None,
