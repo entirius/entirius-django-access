@@ -3,4 +3,4 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Staff roles and permissions per module area, an admin API gate, and hashed application tokens."""
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
