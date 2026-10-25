@@ -222,12 +222,15 @@ def enforce_has_no_unmapped_routes(app_configs=None, **kwargs) -> list[checks.Ch
 
 
 @checks.register(checks.Tags.database)
-def service_users_are_machines(app_configs=None, **kwargs) -> list[checks.CheckMessage]:
+def service_users_are_machines(app_configs=None, databases=None, **kwargs) -> list[checks.CheckMessage]:
     """A service account never becomes a superuser, never gets a password, a group or a user permission — it acts only
     through its tokens.
 
-    Reads the database, so it is a ``database`` check: ``migrate`` and ``check --database default`` run it.
+    Reads the database, so it is a ``database`` check: ``migrate`` and ``check --database default`` run it. Django 6.0
+    calls ``database`` checks without databases too; then it reads nothing.
     """
+    if not databases:
+        return []
     try:
         users = service_users.all_service_users().prefetch_related("groups", "user_permissions")
         wrong = [user.username for user in users if _not_a_machine(user)]

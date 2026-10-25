@@ -55,7 +55,9 @@ def _create(application: Application):
 def sync_service_user(application: Application):
     """Create the service user with the first live admin token; set ``is_staff`` to whether one lives. Runs inside the
     caller's transaction, the application row locked, so concurrent token changes see each other."""
-    application = Application.objects.select_for_update().select_related("service_user").get(pk=application.pk)
+    application = (
+        Application.objects.select_for_update(of=("self",)).select_related("service_user").get(pk=application.pk)
+    )
     live = application.is_active and _holds_live_admin_token(application)
     user = application.service_user
     if user is None:
