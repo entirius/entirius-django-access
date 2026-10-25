@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 — 2026-10-25
 
 Application tokens on admin routes. Existing tokens, key routes and staff behave as before.
 
