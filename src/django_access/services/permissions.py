@@ -30,7 +30,15 @@ BUILTIN_ROLES = {
 }
 MANAGE_ACCESS_PERMISSION = f"{ACCESS_MANAGE}:{WRITE}"
 EDITOR_WRITE_AREAS = frozenset(
-    {"pim.products", "pim.categories", "pim.schema", "pim.quality", "faq.faq", "email.templates"}
+    {
+        "pim.products",
+        "pim.categories",
+        "pim.schema",
+        "pim.attribute_values",
+        "pim.quality",
+        "faq.faq",
+        "email.templates",
+    }
 )
 EDITOR_WRITE_PREFIX = "content."
 LEVEL_RANK = {READ: 1, WRITE: 2}

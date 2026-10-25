@@ -56,7 +56,16 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "EXCEPTION_HANDLER": "django_utils.api.v2_errors.v2_exception_handler",
 }
-SPECTACULAR_SETTINGS = {"TITLE": "django-access Admin API v2", "VERSION": "2.0.0", "OAS_VERSION": "3.1.0"}
+SPECTACULAR_SETTINGS = {
+    "TITLE": "django-access Admin API v2",
+    "VERSION": "2.0.0",
+    "OAS_VERSION": "3.1.0",
+    # As the service wires it: the key exchange documents its X-API-KEY.
+    "POSTPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.postprocess_schema_enums",
+        "django_access.openapi.add_api_key_security",
+    ],
+}
 DATABASES = {"default": dj_database_url.config(default="sqlite://:memory:")}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 USE_TZ = True

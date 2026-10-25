@@ -15,11 +15,12 @@ from collections import Counter
 from django.apps import apps
 from django.conf import settings
 from django.core import checks
+from django.db import DatabaseError
 
 from django_access.catalogue import registry
 from django_access.catalogue.areas import AREA_KEY_RE, LEVEL_SETS, PSEUDO_AREAS, READ, SENSITIVE_FLAGS, WRITE, Area
 from django_access.catalogue.defaults import AREA_OVERRIDES, RouteRule
-from django_access.services import gate, route_map
+from django_access.services import gate, route_map, service_users
 from django_access.services.gate import ENFORCE, MODE_SETTING, MODES
 
 PROCESS_LOCAL_CACHES = frozenset(
@@ -218,3 +219,33 @@ def enforce_has_no_unmapped_routes(app_configs=None, **kwargs) -> list[checks.Ch
             id="django_access.E011",
         )
     ]
+
+
+@checks.register(checks.Tags.database)
+def service_users_are_machines(app_configs=None, databases=None, **kwargs) -> list[checks.CheckMessage]:
+    """A service account never becomes a superuser, never gets a password, a group or a user permission — it acts only
+    through its tokens.
+
+    Reads the database, so it is a ``database`` check: ``migrate`` and ``check --database default`` run it. Django 6.0
+    calls ``database`` checks without databases too; then it reads nothing.
+    """
+    if not databases:
+        return []
+    try:
+        users = service_users.all_service_users().prefetch_related("groups", "user_permissions")
+        wrong = [user.username for user in users if _not_a_machine(user)]
+    except DatabaseError:  # before migrate: no table, nothing to check
+        return []
+    if not wrong:
+        return []
+    return [
+        checks.Error(
+            f"Service accounts with superuser status, a password, a group or a permission: {', '.join(sorted(wrong))}",
+            hint="Clear them and set an unusable password; a service account acts only through its tokens.",
+            id="django_access.E013",
+        )
+    ]
+
+
+def _not_a_machine(user) -> bool:
+    return bool(user.is_superuser or user.has_usable_password() or user.groups.all() or user.user_permissions.all())

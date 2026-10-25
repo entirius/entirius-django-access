@@ -57,6 +57,7 @@ DEFAULT_AREAS: tuple[Area, ...] = (
         ("pim.products", "Products and media"),
         ("pim.categories", "Categories and positions"),
         ("pim.schema", "Features, attributes, sets and link types"),
+        ("pim.attribute_values", "Attribute values"),
         ("pim.quality", "Quality gaps"),
         (PIM_PRODUCT_DELETE, "Delete products (SKU)", WRITE_ONLY, (DESTRUCTIVE,)),
     ),

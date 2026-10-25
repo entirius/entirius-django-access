@@ -85,10 +85,30 @@ since issue or import; `rotation_due`: active and at least `token_rotation_days`
 `raw` is in the create and rotate responses only, with `Cache-Control: no-store` and `Pragma: no-cache`. No response
 ever carries `key_hash`.
 
-Token errors (400, v2 envelope): unknown or mixed scopes (`non_field_errors`); a past `expires_at`. No token needs an
+Token errors (400, v2 envelope): unknown or mixed scopes, `access.manage:*`, an admin scope with a `channel_idx`
+(`non_field_errors`); a past `expires_at`. No token needs an
 expiry and none has a maximum. The expiry endpoint: a past date → `issue: EXPIRY_IN_PAST` on
 `field: expires_at`; every live token takes any future date or `null`. A revoked or expired token (the old token of
 a rotation after its cut-off included) answers 409 and stays dead: issue a new one.
+
+## Key exchange
+
+| Method | Path | Request | Success |
+|---|---|---|---|
+| POST | `token/exchange/` | header `X-API-KEY` (alias `X-API-ADMIN-KEY`), no body | 200 `{access, token_type: "Bearer", expires_in}` + `Cache-Control: no-store` |
+
+`access` is a SimpleJWT access token of the application's service user with the claim `access_token_id` (the token's
+id); send it as `Authorization: Bearer` to any admin route. `expires_in` = `ACCESS_TOKEN_EXCHANGE_TTL_S` (300). No
+refresh token: exchange again before it expires. The key needs an admin scope (`<area>:read|write`).
+
+| Status | When |
+|---|---|
+| 401 `AUTHENTICATION_REQUIRED`, issue `INVALID_API_KEY` (`location: header`) | no key, unknown, expired, revoked, inactive application, no admin scope — one answer for every reason |
+| 429 | above `access_token_exchange` (per key, default `30/min`) or `access_token_exchange_address` (per address, default `120/min`) |
+
+With the JWT on an admin route: 403 `TOKEN_INACTIVE` once its token is revoked, expired or its application inactive;
+403 `ACCESS_DENIED` (`needs <area>:<level>`) for a permission outside the token's scopes and for a write on a
+staff-baseline route. The 401 carries `WWW-Authenticate: ApiKey realm="api", header="X-API-KEY"`.
 
 ## Errors
 

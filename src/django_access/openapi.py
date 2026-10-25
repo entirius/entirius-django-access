@@ -4,7 +4,7 @@
 """drf-spectacular postprocessing hook: the ``ApiKeyAuth`` scheme (header ``X-API-KEY``) on every key route.
 
 The key routes are the token scopes' ``routes`` patterns — ``{name}`` is one path segment, ``/**`` the rest of the
-path (or none). The hook touches no module: it adds the key to each security requirement an operation already has (a route that
+path (or none) — plus the key exchange. The hook touches no module: it adds the key to each security requirement an operation already has (a route that
 also takes the customer JWT gets ``{"ApiKeyAuth": [], "jwtAuth": []}``, whatever the JWT scheme is called there).
 Wire it in ``SPECTACULAR_SETTINGS["POSTPROCESSING_HOOKS"]`` after drf-spectacular's default hooks.
 """
@@ -16,10 +16,11 @@ from django_access.catalogue.scopes import route_regex
 
 SCHEME_NAME = "ApiKeyAuth"
 API_KEY_SCHEME = {"type": "apiKey", "in": "header", "name": "X-API-KEY"}
+EXCHANGE_ROUTE = "/api/access/v2/token/exchange/"
 
 
 def key_route_matcher() -> re.Pattern:
-    routes = {route for scope in registry.scopes() for route in scope.routes}
+    routes = {route for scope in registry.scopes() for route in scope.routes} | {EXCHANGE_ROUTE}
     return re.compile("|".join(f"(?:{route_regex(route)})" for route in sorted(routes)) or "(?!)")
 
 

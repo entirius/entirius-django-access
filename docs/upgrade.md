@@ -40,6 +40,13 @@ issued tokens on each team's schedule. `access_legacy_report` shows who still us
 used; a team may set an expiry per token (`operations.md`). The plaintext rows stay in the module tables until
 someone runs `access_purge_legacy_keys --yes`.
 
+## 1.0 → 1.1
+
+`migrate` (`0006` adds the service-user link, `0007` gives custom roles holding `pim.schema` the same level on the
+new area `pim.attribute_values`). No setting, URL or middleware changes: the exchange is in `django_access.urls`,
+which the host already includes. Existing tokens, key routes and staff behave as before. A host with its own gate
+reads `install.md` § Hosts with their own gate before issuing the first admin-scoped key.
+
 ## Rollback
 
 `ACCESS_GATE_MODE = "off"` (or `observe`) and a restart undo the gate. The rest is in `install.md` § Rollback.
