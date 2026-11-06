@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- The failed-login guard (`services/login_guard`) takes the client address by `django_utils.api.client_ip`, the rule
+  of the accounts throttles, instead of DRF's `get_ident`: `CLIENT_IP_HEADER` when set, and from an address in
+  `CLIENT_IP_TRUSTED_PROXIES` the visitor named in `CLIENT_IP_FORWARDED_HEADER` (`X-Client-IP`). A storefront that
+  logs its customers in from its own server no longer makes them share one per-address counter, where 100 failed
+  passwords of any customers in 15 minutes refused every login of the shop. Without those settings nothing changes.
+  Requires `entirius-django-utils>=2.4.2`.
+
 ## 1.1.0 — 2026-10-25
 
 Application tokens on admin routes. Existing tokens, key routes and staff behave as before.

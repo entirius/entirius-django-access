@@ -102,6 +102,11 @@ token's scopes allow, nothing more. Both gates then have to say yes; access alon
   `DRF_NUM_PROXIES` to the real proxy depth — `1` behind Cloudflare → Caddy → nginx; other hosts set
   `REST_FRAMEWORK["NUM_PROXIES"]`. Unset, the client address is `REMOTE_ADDR`, and a client-chosen
   `X-Forwarded-For` never counts.
+- **Failed-login guard and proxied storefronts.** The guard takes the address like the accounts throttles
+  (`django_utils.api.client_ip`): `CLIENT_IP_HEADER` when set, else the `NUM_PROXIES` rule above. A storefront that
+  logs its customers in from its own server sends their address as `X-Client-IP`; list the storefront's address in
+  `CLIENT_IP_TRUSTED_PROXIES`, or all its customers share one per-address counter (100 failures in 15 minutes lock
+  everybody out).
 - **OpenAPI.** The service serves its schema, swagger and redoc to staff only by default (`API_SCHEMA_PUBLIC`
   False) — the document maps every admin route. Turn it on only where the map is public anyway.
 - **Secret scanning.** Raw tokens start with `ent_api_`; add a gitleaks rule for that prefix to the canonical config.
