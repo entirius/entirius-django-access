@@ -98,7 +98,7 @@ token's scopes allow, nothing more. Both gates then have to say yes; access alon
   workers until the cache timeout, and every worker counts failed logins on its own, so the login limits multiply by
   the worker count. LocMem or Dummy as the default cache is the Error `django_access.E012` under `check --deploy` (any
   `DEBUG`), which stops the deploy; a plain `check` with `DEBUG=False` warns `django_access.W002`.
-- **Proxy depth.** Audit IPs and every per-IP throttle use DRF's `NUM_PROXIES`. On Volkanos set the service setting
+- **Proxy depth.** Audit IPs and the DRF throttles use DRF's `NUM_PROXIES`. On Volkanos set the service setting
   `DRF_NUM_PROXIES` to the real proxy depth — `1` behind Cloudflare → Caddy → nginx; other hosts set
   `REST_FRAMEWORK["NUM_PROXIES"]`. Unset, the client address is `REMOTE_ADDR`, and a client-chosen
   `X-Forwarded-For` never counts.
@@ -107,6 +107,11 @@ token's scopes allow, nothing more. Both gates then have to say yes; access alon
   logs its customers in from its own server sends their address as `X-Client-IP`; list the storefront's address in
   `CLIENT_IP_TRUSTED_PROXIES`, or all its customers share one per-address counter (100 failures in 15 minutes lock
   everybody out).
+  Put exactly one address there: the storefront server's own, never a proxy subnet (such as `10.0.0.0/8`) that
+  contains the host's reverse proxy, or an `X-Client-IP` sent from the internet is trusted and anybody picks their
+  own counter. Set `CLIENT_IP_HEADER` (for example `CF-Connecting-IP`) only when the origin takes traffic from that
+  proxy alone; otherwise every request names its own address. Have the edge proxy drop an incoming `X-Client-IP`
+  (nginx: `proxy_set_header X-Client-IP "";`). The per-username limit (50 an hour) does not depend on the address.
 - **OpenAPI.** The service serves its schema, swagger and redoc to staff only by default (`API_SCHEMA_PUBLIC`
   False) — the document maps every admin route. Turn it on only where the map is public anyway.
 - **Secret scanning.** Raw tokens start with `ent_api_`; add a gitleaks rule for that prefix to the canonical config.
