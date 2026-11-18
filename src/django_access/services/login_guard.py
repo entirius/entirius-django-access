@@ -4,12 +4,16 @@
 """A failed-login counter for every password login of the service (``api/token/``, the customer token route, the
 Django admin form through ``guarded_admin_login``).
 
-Only failed attempts count, per username + address, per address and per username from any address; a success clears
-the first counter and is never counted. The address is DRF's ``get_ident`` (``NUM_PROXIES``). Cache keys carry hashes
-only — no username or address is stored. Settings: ``AUTH_TOKEN_FAILURE_WINDOW_S`` (900, the first two counters),
+Only failed attempts count, per username + address, per address and per username from any address; a success clears the
+first counter and is never counted. The address is ``django_utils.api.client_ip.get_client_ip``, the rule of the
+accounts throttles: ``CLIENT_IP_HEADER`` when set (Cloudflare), else DRF's ``get_ident`` (``NUM_PROXIES``); from an
+address in ``CLIENT_IP_TRUSTED_PROXIES`` (a storefront that logs its visitors in from its own server) the visitor it
+names in ``CLIENT_IP_FORWARDED_HEADER`` (``X-Client-IP``), so its visitors do not share one counter. Cache keys carry
+hashes only — no username or address is stored. Settings: ``AUTH_TOKEN_FAILURE_WINDOW_S`` (900, the first two counters),
 ``AUTH_TOKEN_MAX_FAILURES_PER_USER_IP`` (10), ``AUTH_TOKEN_MAX_FAILURES_PER_IP`` (100),
 ``AUTH_TOKEN_MAX_FAILURES_PER_USER`` (50) and ``AUTH_TOKEN_USER_FAILURE_WINDOW_S`` (3600). The per-username counter
-slows guesses spread over many addresses; its price: anyone who knows a username can hold it at 429 for up to its window.
+slows guesses spread over many addresses; its price: anyone who knows a username can hold it at 429 for up to its
+window.
 """
 
 import functools
@@ -22,8 +26,8 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.http import HttpResponse
+from django_utils.api.client_ip import get_client_ip
 from rest_framework.exceptions import Throttled
-from rest_framework.throttling import BaseThrottle
 
 ADMIN_LOGIN_REFUSED = "Too many failed login attempts. Try again later."
 
@@ -59,7 +63,7 @@ def login_username(request) -> str:
 def failure_keys(request, username: str) -> tuple[str, str, str]:
     """(per username + address, per address, per username) counter keys; ``username`` as the login serializer sees
     it."""
-    ident = BaseThrottle().get_ident(request)
+    ident = get_client_ip(request)
     per_user_ip = _digest(f"{username}\x00{ident}")
     return f"auth:fail:ui:{per_user_ip}", f"auth:fail:ip:{_digest(ident)}", f"auth:fail:u:{_digest(username)}"
 

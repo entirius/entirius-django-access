@@ -111,6 +111,38 @@ def test_keys_are_hashes_without_username_or_address(at):
     assert keys != login_guard.failure_keys(at(OTHER_ADDRESS), "staffer")
 
 
+STOREFRONT, VISITOR, OTHER_VISITOR = "10.0.0.5", "203.0.113.7", "203.0.113.8"
+
+
+@pytest.fixture
+def via_storefront(rf, settings):
+    """A storefront that logs its visitors in from its own server (the PWA's ``/session/login``) and names each one in
+    ``X-Client-IP``, from an address in ``CLIENT_IP_TRUSTED_PROXIES``."""
+    settings.CLIENT_IP_TRUSTED_PROXIES = [STOREFRONT]
+    return lambda visitor: rf.post("/login/", REMOTE_ADDR=STOREFRONT, HTTP_X_CLIENT_IP=visitor)
+
+
+def test_a_trusted_storefront_counts_each_visitor_on_its_own(via_storefront):
+    _fail(via_storefront(VISITOR), "staffer", 3)
+    assert _blocked(via_storefront(VISITOR), "staffer")
+    assert not _blocked(via_storefront(OTHER_VISITOR), "staffer")
+
+
+def test_failures_of_one_visitor_of_a_trusted_storefront_do_not_block_the_others(via_storefront):
+    for i in range(5):
+        _fail(via_storefront(VISITOR), f"user-{i}", 1)
+    assert _blocked(via_storefront(VISITOR), "someone")
+    assert not _blocked(via_storefront(OTHER_VISITOR), "someone")
+
+
+def test_an_untrusted_client_cannot_pick_its_counter_with_x_client_ip(rf):
+    def at(visitor):
+        return rf.post("/login/", REMOTE_ADDR=ADDRESS, HTTP_X_CLIENT_IP=visitor)
+
+    _fail(at(VISITOR), "staffer", 3)
+    assert _blocked(at(OTHER_VISITOR), "staffer")
+
+
 def test_login_username_is_stripped_like_the_serializer(rf):
     raw = rf.post("/login/", {"username": " staffer ", "password": "x"}, content_type="application/json")
     assert login_guard.login_username(Request(raw, parsers=[JSONParser()])) == "staffer"

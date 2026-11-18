@@ -1,7 +1,7 @@
 
 [project]
 name = "entirius-django-access"
-version = "1.1.0"
+version = "1.1.1"
 description = "Staff access module for Entirius: roles per module area, an admin API gate and hashed application tokens"
 keywords = ["django", "permissions", "roles", "api-tokens", "ecommerce", "entirius"]
 classifiers = [
@@ -33,7 +33,7 @@ dependencies = [
     "djangorestframework-simplejwt>=5.3",
     "drf-spectacular>=0.27",
     "pydantic>=2.0",
-    "entirius-django-utils>=2.2.0",
+    "entirius-django-utils>=2.4.2",
 ]
 
 [project.optional-dependencies]

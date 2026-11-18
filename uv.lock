@@ -310,7 +310,7 @@ wheels = [
 
 [[package]]
 name = "entirius-django-access"
-version = "1.1.0"
+version = "1.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "django", version = "5.2.17", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -341,7 +341,7 @@ requires-dist = [
     { name = "djangorestframework", specifier = ">=3.15.2" },
     { name = "djangorestframework-simplejwt", specifier = ">=5.3" },
     { name = "drf-spectacular", specifier = ">=0.27" },
-    { name = "entirius-django-utils", specifier = ">=2.2.0" },
+    { name = "entirius-django-utils", specifier = ">=2.4.2" },
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'test'", specifier = ">=3.1" },
     { name = "pydantic", specifier = ">=2.0" },
@@ -371,7 +371,7 @@ wheels = [
 
 [[package]]
 name = "entirius-django-utils"
-version = "2.2.0"
+version = "2.4.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -389,9 +389,9 @@ dependencies = [
     { name = "python-slugify" },
     { name = "webargs" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1d/e3/9329ba03c6a8d2f0d46da2f1ecebaaf9bb716b64bb00359bb830772cc97b/entirius_django_utils-2.2.0.tar.gz", hash = "sha256:77d2b8f2b0f6dab687a62aa1e856fe269e389da6c9460d35cadfbec7e29f3cef", size = 87695, upload-time = "2026-09-16T06:19:49.916Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/76/50/b256ace309bb8bc9520bb17db7193613ca3bda2a56a00dd725e1dc6adffd/entirius_django_utils-2.4.3.tar.gz", hash = "sha256:69c0c5988d2fdf32800b1e995b6d905a2a42ef800678496e318cd9d9df3c02d8", size = 96566, upload-time = "2026-11-04T17:51:12.572Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/a3/b808f760630020c7270dd3ab16c3a15adea25edb2efc8bfe6ae07321801a/entirius_django_utils-2.2.0-py3-none-any.whl", hash = "sha256:728039494fac0940f7fbc7c77f3736dac80e56c24f79ac3c50ebc394beaff6ef", size = 41338, upload-time = "2026-09-16T06:19:48.941Z" },
+    { url = "https://files.pythonhosted.org/packages/97/fc/cae3ea7c792f5bc7e721a0b1329a498f0edbd4705d5e8723b513e90c4742/entirius_django_utils-2.4.3-py3-none-any.whl", hash = "sha256:a5e3378ef2dea8346a48c2621eeaa9e21b35c151916315b0f804a08c64e9bc99", size = 44087, upload-time = "2026-11-04T17:51:11.422Z" },
 ]
 
 [[package]]
