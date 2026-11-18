@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.1 — 2026-11-18
 
 - The failed-login guard (`services/login_guard`) takes the client address by `django_utils.api.client_ip`, the rule
   of the accounts throttles, instead of DRF's `get_ident`: `CLIENT_IP_HEADER` when set, and from an address in
